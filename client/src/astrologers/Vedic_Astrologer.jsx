@@ -1,0 +1,593 @@
+/* eslint-disable no-unused-vars */
+import { Sparkles, MessageCircle, Mail } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import CategoryHeader from "@/Advisors_Components/Header";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+
+import {
+  Card,
+  CardContent,
+  CardFooter,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import axios from "axios";
+import { useAuth } from "@/All_Components/screen/AuthContext";
+
+export default function Vedic_Astrologers() {
+  const [birthChartData, setBirthChartData] = useState({
+    name: "",
+    gender: "",
+    birthDay: "",
+    birthMonth: "",
+    birthYear: "",
+    birthHour: "",
+    birthMinute: "",
+    birthPlace: "",
+    birthSeconds: "",
+    latitude: "",    
+longitude: "" 
+  });
+
+  const [first, setFirst] = useState(false);
+  const [showing, setShowing] = useState(5);
+  const [loading, setLoading] = useState(true);
+  const navigate = useNavigate();
+  const { user } = useAuth();
+const [selectedPsychic, setSelectedPsychic] = useState(null);
+const [showAstroForm, setShowAstroForm] = useState(false);
+const [isSubmitting, setIsSubmitting] = useState(false);
+const [isGeocoding, setIsGeocoding] = useState(false);
+
+
+const geocodeBirthPlace = async () => {
+  if (!popupFormData.birthPlace) return;
+
+  setIsGeocoding(true);
+  try {
+    const response = await axios.get(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+        popupFormData.birthPlace
+      )}&format=json`,
+      {
+        headers: {
+          "User-Agent": "YourAppName/1.0 (your@email.com)", // Required by Nominatim
+        },
+      }
+    );
+
+    if (response.data.length > 0) {
+      setPopupFormData((prev) => ({
+        ...prev,
+        latitude: parseFloat(response.data[0].lat).toFixed(6),
+        longitude: parseFloat(response.data[0].lon).toFixed(6),
+      }));
+    }
+  } catch (error) {
+    console.error("Geocoding failed:", error);
+  } finally {
+    setIsGeocoding(false);
+  }
+};
+
+const [popupFormData, setPopupFormData] = useState({
+  yourName: "",
+  birthDate: "",
+  birthTime: "",
+  birthPlace: "",
+  latitude: "",    
+  longitude: "" 
+});
+
+const [data, setData] = useState([
+  {
+    _id: "1",
+    name: "Riya Sharma",
+    image: "https://randomuser.me/api/portraits/women/65.jpg",
+    rating: 5,
+    reviewCount: 128,
+    status: "online",
+    skills: ["Love Reading", "Vedic", "Kundli"],
+    description: "Riya is a certified Vedic astrologer with over 10 years of experience helping clients find clarity in love and career.",
+    latestReview: {
+      text: "She gave me insights that felt truly personal. Highly recommend!",
+    },
+  },
+  {
+    _id: "2",
+    name: "Manoj Bhatt",
+    image: "https://randomuser.me/api/portraits/men/32.jpg",
+    rating: 4,
+    reviewCount: 89,
+    status: "online",
+    skills: ["Career Advice", "Marriage Match", "Horoscope"],
+    description: "Manoj specializes in matchmaking and career guidance using ancient Vedic principles.",
+    latestReview: {
+      text: "Accurate and very professional. Cleared my doubts about my career path.",
+    },
+  }
+]);
+
+  const handlePuch = () => {
+    navigate("/vedic-astrologer-detail");
+  };
+
+  const handleBirthChartSubmit = (e) => {
+    e.preventDefault();
+    console.log("Birth Chart Data:", birthChartData);
+  };
+
+  useEffect(() => {
+    const {
+      name,
+      gender,
+      birthDay,
+      birthMonth,
+      birthYear,
+      birthHour,
+      birthMinute,
+      birthPlace,
+      birthSeconds,
+      
+    } = birthChartData;
+
+    setFirst(
+      !!(
+        name &&
+        gender &&
+        birthDay &&
+        birthMonth &&
+        birthYear &&
+        birthHour &&
+        birthMinute &&
+        birthPlace &&
+        birthSeconds
+      )
+    );
+  }, [birthChartData]);
+
+  useEffect(() => {
+    const fetchVedicAdvisors = async () => {
+      try {
+        const res = await axios.get(
+          `${import.meta.env.VITE_BASE_URL}/api/psychics/type/astrology`
+        );
+        if (res.data.success) {
+          setData(res.data.data);
+        }
+        useEffect(() => {
+  if (popupFormData.birthPlace) {
+    const debounced = setTimeout(() => {
+      geocodeBirthPlace();
+    }, 1000);
+    return () => clearTimeout(debounced);
+  }
+}, [popupFormData.birthPlace]);
+      } catch (err) {
+        console.error("Error fetching Vedic advisors:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchVedicAdvisors();
+  }, []);
+
+  const handleShowMore = () => {
+    setShowing((prev) => prev + 5);
+  };
+
+ 
+  
+  return (
+    <>
+      <CategoryHeader
+        title="Vedic Astrologers"
+        description="Our Vedic Astrologers specialists can see and interpret the colors and energies surrounding you, providing insights into your emotional, mental, and spiritual state."
+        icon={<Sparkles className="w-64 h-64" />}
+        bgColor="bg-[#3291F6]"
+      />
+
+      <div className="max-w-6xl mx-auto px-2 mb-10">
+        {/* Birth Chart Form */}
+        <Card className="border-2 border-gray-200 bg-white shadow-lg">
+          <CardContent className="space-y-4">
+            <form onSubmit={handleBirthChartSubmit} className="space-y-2">
+              <Input
+                placeholder="Name"
+                value={birthChartData.name}
+                onChange={(e) =>
+                  setBirthChartData({ ...birthChartData, name: e.target.value })
+                }
+              />
+
+              <Select
+                value={birthChartData.gender}
+                onValueChange={(value) =>
+                  setBirthChartData({ ...birthChartData, gender: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select Gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="male">Male</SelectItem>
+                  <SelectItem value="female">Female</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  placeholder="Day"
+                  value={birthChartData.birthDay}
+                  onChange={(e) =>
+                    setBirthChartData({ ...birthChartData, birthDay: e.target.value })
+                  }
+                />
+                <Input
+                  placeholder="Month"
+                  value={birthChartData.birthMonth}
+                  onChange={(e) =>
+                    setBirthChartData({ ...birthChartData, birthMonth: e.target.value })
+                  }
+                />
+                <Input
+                  placeholder="Year"
+                  value={birthChartData.birthYear}
+                  onChange={(e) =>
+                    setBirthChartData({ ...birthChartData, birthYear: e.target.value })
+                  }
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <Input
+                  placeholder="Hour"
+                  value={birthChartData.birthHour}
+                  onChange={(e) =>
+                    setBirthChartData({ ...birthChartData, birthHour: e.target.value })
+                  }
+                />
+                <Input
+                  placeholder="Minute"
+                  value={birthChartData.birthMinute}
+                  onChange={(e) =>
+                    setBirthChartData({ ...birthChartData, birthMinute: e.target.value })
+                  }
+                />
+                <Input
+                  placeholder="Second"
+                  value={birthChartData.birthSeconds}
+                  onChange={(e) =>
+                    setBirthChartData({ ...birthChartData, birthSeconds: e.target.value })
+                  }
+                />
+              </div>
+
+              <Input
+                placeholder="Birth Place"
+                value={birthChartData.birthPlace}
+                onChange={(e) =>
+                  setBirthChartData({ ...birthChartData, birthPlace: e.target.value })
+                }
+              />
+
+              <Button
+                onClick={handlePuch}
+                disabled={!first}
+                variant="brand"
+                type="submit"
+                className="w-full"
+              >
+                Get Started
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+
+        
+        {loading ? (
+          <p className="text-center mt-6">Loading profiles...</p>
+        ) : (
+         <div className="grid gap-8 mb-10 w-full">
+  {data.slice(0, showing).map((psychic, i) => (
+    <div
+      key={psychic._id || i}
+      className="overflow-hidden w-full rounded-xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-md dark:border-slate-800 dark:bg-slate-950"
+    >
+      <div className="p-6">
+        <div className="flex flex-col gap-6 md:flex-row">
+          {/* Image & Info */}
+          <div className="flex flex-col items-center lg:w-64">
+            <div className="relative rounded-full border-4 border-violet-100 dark:border-violet-900">
+              <img 
+                src={psychic.image || "/placeholder.svg"}
+                alt={psychic.name}
+                className="object-cover h-32 w-32 rounded-full"
+              />
+            </div>
+            <div className="mt-4 text-center">
+              <h3 className="text-xl font-semibold">{psychic.name}</h3>
+              <p className="text-slate-700 dark:text-slate-200">{psychic.type}</p>
+              <div className="mt-1 flex items-center justify-center">
+                {Array(Math.round(psychic.rating || 0))
+                  .fill(0)
+                  .map((_, i) => (
+                    <svg
+                      key={i}
+                      className="h-4 w-4 fill-amber-400 text-amber-400"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                    </svg>
+                  ))}
+              </div>
+              <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+                {psychic.reviewCount || 0} reviews
+              </p>
+              <Badge className="mt-2 bg-emerald-500">
+                {psychic.status === "online" ? "Available" : psychic.status}
+              </Badge>
+            </div>
+          </div>
+
+          {/* Details & Review */}
+          <div className="flex-1 space-y-4">
+            <div className="flex flex-wrap gap-2">
+              {(psychic.abilities || psychic.skills || []).map((ability, idx) => (
+                <Badge
+                  key={idx}
+                  variant="outline"
+                  className="bg-violet-50 text-violet-700 dark:bg-violet-950 dark:text-violet-300"
+                >
+                  {ability}
+                </Badge>
+              ))}
+            </div>
+
+            <p className="text-slate-700 dark:text-slate-300">
+              {psychic.bio || psychic.description || "No bio available."}
+            </p>
+
+           {psychic.latestReview ? (
+  <div className="mt-4">
+    <h4 className="font-medium text-slate-900 dark:text-white">Latest Review</h4>
+    <div className="mt-2 rounded-lg bg-slate-50 p-4 dark:bg-slate-900">
+      <div className="flex items-center justify-between">
+        {/* Username or default */}
+        <div className="flex items-center gap-2">
+          <img
+            src={psychic.latestReview?.userImage || "/default-user.png"}
+            alt="User"
+            className="w-6 h-6 rounded-full"
+          />
+          <p className="font-medium">
+            {psychic.latestReview?.user || "Anonymous"}
+          </p>
+        </div>
+
+        {/* Rating stars or fallback */}
+        <div className="flex">
+          {psychic.latestReview?.rating ? (
+            Array(Math.round(psychic.latestReview.rating))
+              .fill(0)
+              .map((_, i) => (
+                <svg
+                  key={i}
+                  className="h-3 w-3 fill-amber-400 text-amber-400"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+              ))
+          ) : (
+            <p className="text-sm text-gray-400 italic">No rating</p>
+          )}
+        </div>
+      </div>
+
+      {/* Review text */}
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+        {psychic.latestReview?.text || "No review available."}
+      </p>
+    </div>
+  </div>
+) : (
+  <div className="mt-4">
+    <h4 className="font-medium text-slate-900 dark:text-white">Latest Review</h4>
+    <div className="mt-2 rounded-lg bg-slate-50 p-4 dark:bg-slate-900">
+      <div className="flex items-center gap-2">
+        <img
+          src="/default-user.png"
+          alt="Anonymous"
+          className="w-6 h-6 rounded-full"
+        />
+        <p className="font-medium">Anonymous</p>
+      </div>
+      <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 italic">
+        No review available.
+      </p>
+    </div>
+  </div>
+)}
+
+            <div className="mt-6 flex flex-wrap gap-3">
+             <Button
+  variant="brand"
+  className="rounded-full gap-2"
+  onClick={() => {
+    if (!user) {
+      navigate("/login");
+      return;
+    }
+    setSelectedPsychic(psychic);
+    setShowAstroForm(true);
+  }}
+>
+  <MessageCircle className="h-4 w-4" />
+  Chat €{psychic.rate?.perMinute?.toFixed(2) || "1.75"}/min
+</Button>
+
+              <Button variant="ghost" size="icon">
+                <Mail className="h-5 w-5" />
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  ))}
+
+  {showing < data.length && (
+    <div className="flex justify-center mt-4">
+      <Button onClick={handleShowMore} variant="brand">
+        Show More
+      </Button>
+    </div>
+  )}
+</div>
+
+        )}
+      </div>
+
+      <Dialog open={showAstroForm} onOpenChange={setShowAstroForm}>
+<DialogContent className="w-full max-w-lg rounded-xl bg-white p-6 shadow-xl z-50">
+    <div className="p-4">
+      <h2 className="text-xl font-semibold mb-4 text-center">
+        Astrology Reading with {selectedPsychic?.name}
+      </h2>
+     <form
+  onSubmit={async (e) => {
+    e.preventDefault();
+    if (!user || !selectedPsychic) return;
+
+    try {
+      setIsSubmitting(true);
+      const payload = {
+        psychicId: selectedPsychic._id,
+        formData: popupFormData,
+      };
+
+      const res = await axios.post(
+        `${import.meta.env.VITE_BASE_URL}/api/form/submit`,
+        payload,
+        {
+          headers: {
+            Authorization: `Bearer ${user.token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      if (res.data.success) {
+        setShowAstroForm(false);
+        navigate(`/chat/${selectedPsychic._id}`);
+      }
+    } catch (err) {
+      alert("Please complete the form correctly.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  }}
+  className="space-y-3"
+>
+  <Input
+    placeholder="Full Name"
+    required
+    value={popupFormData.yourName}
+    onChange={(e) =>
+      setPopupFormData({ ...popupFormData, yourName: e.target.value })
+    }
+  />
+  <div className="grid grid-cols-2 gap-3">
+    <Input
+      type="date"
+      required
+      value={popupFormData.birthDate}
+      onChange={(e) =>
+        setPopupFormData({ ...popupFormData, birthDate: e.target.value })
+      }
+    />
+    <Input
+      type="time"
+      value={popupFormData.birthTime}
+      onChange={(e) =>
+        setPopupFormData({ ...popupFormData, birthTime: e.target.value })
+      }
+    />
+  </div>
+  <Input
+    placeholder="Place of Birth"
+    required
+    value={popupFormData.birthPlace}
+    onChange={(e) =>
+      setPopupFormData({ ...popupFormData, birthPlace: e.target.value })
+    }
+  />
+{isGeocoding && (
+  <p className="text-sm text-gray-500">Looking up coordinates...</p>
+)}
+
+{popupFormData.latitude && popupFormData.longitude && !isGeocoding && (
+  <p className="text-sm text-green-600">
+    Coordinates: {popupFormData.latitude}, {popupFormData.longitude}
+  </p>
+)}
+ <Input
+    placeholder="latitude"
+    required
+    value={popupFormData.latitude}
+    onChange={(e) =>
+      setPopupFormData({ ...popupFormData, latitude: e.target.value })
+    }
+  />
+   <Input
+    placeholder="longitude"
+    required
+    value={popupFormData.longitude}
+    onChange={(e) =>
+      setPopupFormData({ ...popupFormData, longitude: e.target.value })
+    }
+  />
+
+  <div className="mt-4">
+     <Button
+      type="submit"
+      className="w-full"
+      variant="brand"
+      disabled={isSubmitting}
+    >
+      {isSubmitting ? "Submitting..." : "Start Reading"}
+    </Button>
+    <Button
+      type="button"
+      variant="outline"
+      className="w-full mt-4"
+      onClick={() => setShowAstroForm(false)}
+      disabled={isSubmitting}
+    >
+      Cancel
+    </Button>
+   
+  </div>
+</form>
+
+    </div>
+  </DialogContent>
+</Dialog>
+
+    </>
+  );
+}
