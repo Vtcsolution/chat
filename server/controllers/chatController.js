@@ -1,16 +1,18 @@
 const { OpenAI } = require("openai");
 const axios = require("axios");
+const qs = require("querystring");
+
 const ChatMessage = require("../models/chatMessage");
 const AiPsychic = require("../models/aiPsychic");
 const AiFormData = require("../models/aiFormData");
 const { getRequiredFieldsByType } = require("../utils/formLogic");
-const qs = require("querystring");
+const { getCoordinatesFromCity } = require("../utils/geocode"); // For lat/lng from city
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-
+// 🔮 Get Prokerala Access Token
 const getProkeralaAccessToken = async () => {
   const response = await axios.post(
     "https://api.prokerala.com/token",
@@ -25,65 +27,50 @@ const getProkeralaAccessToken = async () => {
       },
     }
   );
-
   return response.data.access_token;
 };
 
-// In your getVedicAstrologyData function
+// 🌠 Fetch Vedic Astrology Data
 const getVedicAstrologyData = async (formData) => {
   try {
     if (!formData.latitude || !formData.longitude) {
       throw new Error("Missing coordinates");
     }
 
-const timeParts = formData.birthTime.split(":");
-const birthTime = [
-  timeParts[0]?.padStart(2, "0") || "00",
-  timeParts[1]?.padStart(2, "0") || "00",
-  timeParts[2]?.padStart(2, "0") || "00"
-].join(":");
-const datetime = `${formData.birthDate}T${birthTime}+05:00`; // Use cleaned value
-console.log("🔍 DateTime sent:", datetime);
-console.log("📍 Coordinates:", formData.latitude, formData.longitude);
+    const timeParts = formData.birthTime.split(":");
+    const birthTime = [
+      timeParts[0]?.padStart(2, "0") || "00",
+      timeParts[1]?.padStart(2, "0") || "00",
+      timeParts[2]?.padStart(2, "0") || "00"
+    ].join(":");
+    const datetime = `${formData.birthDate}T${birthTime}+05:00`;
+
     const token = await getProkeralaAccessToken();
-   const response = await axios.get("https://api.prokerala.com/v2/astrology/kundli", {
-  headers: { Authorization: `Bearer ${token}` },
-  params: {
-    ayanamsa: 1,
-    coordinates: `${formData.latitude},${formData.longitude}`,
-    datetime,
-  },
-});
+    const response = await axios.get("https://api.prokerala.com/v2/astrology/kundli", {
+      headers: { Authorization: `Bearer ${token}` },
+      params: {
+        ayanamsa: 1,
+        coordinates: `${formData.latitude},${formData.longitude}`,
+        datetime,
+      },
+    });
 
-console.log("📦 Full API Response:", response.data);
+    const { nakshatra_details } = response.data?.data || {};
+    if (!nakshatra_details) throw new Error("Incomplete astrology data received.");
 
-
-const { nakshatra_details } = response.data?.data || {};
-if (!nakshatra_details) {
-  throw new Error("Incomplete astrology data received.");
-}
-
-const moonSign = nakshatra_details.chandra_rasi?.name || "N/A";
-const sunSign = nakshatra_details.soorya_rasi?.name || "N/A";
-const ascendantSign = nakshatra_details.zodiac?.name || "N/A";
-const nakshatraName = nakshatra_details.nakshatra?.name || "N/A";
-
-return `
-🌙 Moon Sign: ${moonSign}
-☀️ Sun Sign: ${sunSign}
-🔺 Ascendant: ${ascendantSign}
-✴️ Nakshatra: ${nakshatraName}
-`;
-
+    return `
+🌙 Moon Sign: ${nakshatra_details.chandra_rasi?.name || "N/A"}
+☀️ Sun Sign: ${nakshatra_details.soorya_rasi?.name || "N/A"}
+🔺 Ascendant: ${nakshatra_details.zodiac?.name || "N/A"}
+✴️ Nakshatra: ${nakshatra_details.nakshatra?.name || "N/A"}
+`.trim();
   } catch (error) {
     console.error("🔻 Astrology Fallback:", error.message);
-    return "⚠️ Could not fetch astrology details. Please double-check your birth time and place.";
+    return "⚠️ Could not fetch astrology details. Please double-check birth time and place.";
   }
 };
 
-
-
-// Main controller
+// 🧠 Main Chat Controller
 const chatWithPsychic = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -106,32 +93,25 @@ const chatWithPsychic = async (req, res) => {
     if (isUnrelated) {
       return res.status(400).json({
         success: false,
-        message: "I'm guided to focus only on matters of the heart and soul. Let’s explore the energy of your relationships or emotional path.",
+        message: "I'm guided to focus only on matters of the heart and soul. Let’s explore emotional or spiritual topics.",
       });
     }
 
     const { type, systemPrompt } = psychic;
     const requiredFields = getRequiredFieldsByType(type);
 
-    let form = null;
-    if (requiredFields.length > 0) {
-      form = await AiFormData.findOne({ userId, type });
-      if (!form || !form.formData) {
-        return res.status(400).json({
-          success: false,
-          message: `Please submit the required form for ${type} before chatting.`,
-        });
-      }
+    const form = await AiFormData.findOne({ userId, type });
+    if (!form || !form.formData) {
+      return res.status(400).json({ success: false, message: `Please submit the required form for ${type}.` });
+    }
 
-      const missingFields = requiredFields.filter(
-        (f) => !form.formData[f] || form.formData[f] === ""
-      );
-      if (missingFields.length > 0) {
-        return res.status(400).json({
-          success: false,
-          message: `Missing required fields: ${missingFields.join(", ")}`,
-        });
-      }
+    const f = form.formData;
+    const missingFields = requiredFields.filter(field => !f[field]);
+    if (missingFields.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Missing required fields: ${missingFields.join(", ")}`,
+      });
     }
 
     let chat = await ChatMessage.findOne({ userId, psychicId });
@@ -142,37 +122,52 @@ const chatWithPsychic = async (req, res) => {
     chat.messages.push({ sender: "user", text: message });
     await chat.save();
 
-    const chatHistory = chat.messages.map((msg) => ({
+    const chatHistory = chat.messages.map(msg => ({
       role: msg.sender === "user" ? "user" : "assistant",
       content: msg.text,
     }));
 
-    const f = form?.formData || {};
-
-    // 🟡 Get astrology context if applicable
+    // 🟡 Get Astrology Context (for Love & Astrology)
     let astrologyContext = "";
-if (type === "Astrology") {
-  try {
-    astrologyContext = await getVedicAstrologyData(f);
+    if (type === "Astrology" || type === "Love") {
+      try {
+        const userCoords = await getCoordinatesFromCity(f.birthPlace || f.yourBirthPlace);
+        const userAstro = await getVedicAstrologyData({
+          birthDate: f.birthDate || f.yourBirthDate,
+          birthTime: f.birthTime || f.yourBirthTime,
+          latitude: userCoords.latitude,
+          longitude: userCoords.longitude,
+        });
 
-    // ✅ DO NOT SAVE SYSTEM MESSAGE TO DB
-    chatHistory.unshift({
-      role: "system",
-      content: `User birth data astrology report:\n${astrologyContext}`
-    });
+        astrologyContext += `🧍‍♀️ Your Astrology:\n${userAstro}\n`;
 
-  } catch (err) {
-    console.error("❌ Astrology API Error:", err.message);
-    astrologyContext = "⚠️ Could not fetch astrology details.";
-  }
-}
+        if (type === "Love" && f.partnerPlaceOfBirth && f.partnerBirthTime && f.partnerBirthDate) {
+          const partnerCoords = await getCoordinatesFromCity(f.partnerPlaceOfBirth);
+          const partnerAstro = await getVedicAstrologyData({
+            birthDate: f.partnerBirthDate,
+            birthTime: f.partnerBirthTime,
+            latitude: partnerCoords.latitude,
+            longitude: partnerCoords.longitude,
+          });
 
+          astrologyContext += `💑 Partner Astrology:\n${partnerAstro}`;
+        }
 
-    // 🟢 Final system message to AI
-let userDetailsSection = "";
+        chatHistory.unshift({
+          role: "system",
+          content: `Astrology Report:\n${astrologyContext}`
+        });
 
-if (type === "Love") {
-  userDetailsSection = `
+      } catch (err) {
+        console.error("❌ Astrology API Error:", err.message);
+        astrologyContext = "⚠️ Could not fetch astrology details.";
+      }
+    }
+
+    // ✍️ Build final user detail block
+    let userDetailsSection = "";
+    if (type === "Love") {
+      userDetailsSection = `
 User:
 - Name: ${f.yourName}
 - Birth Date: ${f.yourBirthDate}
@@ -185,32 +180,31 @@ Partner:
 - Birth Time: ${f.partnerBirthTime || "N/A"}
 - Birth Place: ${f.partnerPlaceOfBirth || "N/A"}
 `.trim();
-} else if (type === "Numerology") {
-  userDetailsSection = `
+    } else if (type === "Numerology") {
+      userDetailsSection = `
 Numerology Profile:
 - Name: ${f.yourName}
 - Birth Date: ${f.birthDate}
 `.trim();
-} else if (type === "Tarot") {
-  userDetailsSection = `The user is seeking spiritual tarot guidance. No form data required.`;
-} else {
-  userDetailsSection = `
+    } else if (type === "Tarot") {
+      userDetailsSection = `The user is seeking spiritual tarot guidance. No form data required.`;
+    } else {
+      userDetailsSection = `
 - Name: ${f.yourName || f.fullName}
 - Birth Date: ${f.birthDate}
 - Birth Time: ${f.birthTime}
 - Birth Place: ${f.birthPlace}
-`;
-}
+`.trim();
+    }
 
-const systemContent = `
+    const systemContent = `
 ${systemPrompt}
 
 User Form Data:
 ${userDetailsSection}
 
-${type === "Astrology" ? `Astrology Info:\n${astrologyContext}` : ""}
+${(type === "Astrology" || type === "Love") ? `Astrology Info:\n${astrologyContext}` : ""}
 `.trim();
-
 
     const messagesForAI = [
       { role: "system", content: systemContent },
@@ -223,7 +217,6 @@ ${type === "Astrology" ? `Astrology Info:\n${astrologyContext}` : ""}
     });
 
     const aiReply = completion.choices[0].message.content;
-
     chat.messages.push({ sender: "ai", text: aiReply });
     await chat.save();
 
@@ -242,7 +235,6 @@ ${type === "Astrology" ? `Astrology Info:\n${astrologyContext}` : ""}
     });
   }
 };
-
 
 
 const getChatHistory = async (req, res) => {

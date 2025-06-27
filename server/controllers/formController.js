@@ -46,6 +46,7 @@ return res.status(200).json ({
 
 }
 }
+
 const getSubmittedForm = async (req, res) => {
   try {
     // Get userId from auth middleware instead of params

@@ -24,59 +24,59 @@ const [selectedPsychic, setSelectedPsychic] = useState(null);
 
 
 const [formData, setFormData] = useState({
-yourName: "",
-yourBirthDate: "",
-yourBirthTime: "",
-yourBirthPlace: "",
-partnerName: "",
-partnerBirthDate: "",
-partnerBirthTime: "",
-partnerPlaceOfBirth: "",
-fullName: "",  
-birthDate: "",
-latitude: "",    
-longitude: "" 
+  yourName: "",
+  yourBirthDate: "",
+  yourBirthTime: "",
+  yourBirthPlace: "",
+  partnerName: "",
+  partnerBirthDate: "",
+  partnerBirthTime: "",
+  partnerPlaceOfBirth: "",
+  fullName: "",  
+  birthDate: ""
 });
 
- const geocodeBirthPlace = async () => {
-    if (!formData.birthPlace) return;
-    
-    setIsGeocoding(true);
+useEffect(() => {
+  const fetchCoords = async (field, city) => {
+    if (!city) return;
+
     try {
+      setIsGeocoding(true);
       const response = await axios.get(
-        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(formData.birthPlace)}&format=json`,
-        {
-          headers: {
-            'User-Agent': 'YourAppName/1.0 (your@email.com)' // Required by Nominatim
-          }
-        }
+        `${import.meta.env.VITE_BASE_URL}/api/geocode?city=${encodeURIComponent(city)}`
       );
-      
-      if (response.data.length > 0) {
-        setFormData(prev => ({
-          ...prev,
-          latitude: parseFloat(response.data[0].lat).toFixed(6),
-          longitude: parseFloat(response.data[0].lon).toFixed(6)
-        }));
-      }
-    } catch (error) {
-      console.error("Geocoding failed:", error);
+
+      const { latitude, longitude } = response.data;
+
+      setFormData(prev => {
+        const updated = { ...prev };
+
+        if (field === "your" || field === "birth") {
+          updated.latitude = parseFloat(latitude).toFixed(6);
+          updated.longitude = parseFloat(longitude).toFixed(6);
+        } else if (field === "partner") {
+          updated.partnerLatitude = parseFloat(latitude).toFixed(6);
+          updated.partnerLongitude = parseFloat(longitude).toFixed(6);
+        }
+
+        return updated;
+      });
+    } catch (err) {
+      console.error(`❌ Geocode failed for "${city}"`, err);
+      // Handle error (maybe show to user)
     } finally {
       setIsGeocoding(false);
     }
   };
 
-  // --- ADD THE USEEFFECT HOOK HERE ---
-  useEffect(() => {
-    if (selectedPsychic?.type === "Astrology" && formData.birthPlace) {
-      const debouncedGeocode = setTimeout(() => {
-        geocodeBirthPlace();
-      }, 1000);
-      
-      return () => clearTimeout(debouncedGeocode);
-    }
-  }, [formData.birthPlace, selectedPsychic?.type]);
-
+  // Handle both Astrology and Love cases
+  if (selectedPsychic?.type === "Astrology" && formData.birthPlace) {
+    fetchCoords("birth", formData.birthPlace);
+  } else if (selectedPsychic?.type === "Love") {
+    if (formData.yourBirthPlace) fetchCoords("your", formData.yourBirthPlace);
+    if (formData.partnerPlaceOfBirth) fetchCoords("partner", formData.partnerPlaceOfBirth);
+  }
+}, [formData.yourBirthPlace, formData.partnerPlaceOfBirth, formData.birthPlace, selectedPsychic?.type]);
 const [isSubmitting, setIsSubmitting] = useState(false);
 
 // Fetch psychics from API
@@ -119,8 +119,7 @@ if (!user) {
     partnerPlaceOfBirth: "",
     fullName: "",
     birthDate: "",
-    latitude:"",
-    longitude:""
+   
   });
   setShowFormModal(true);
 }
@@ -134,81 +133,137 @@ const handleInputChange = (e) => {
 
 // Submit form data
 const handleFormSubmit = async () => {
-if (!selectedPsychic || !user) return;
-  if (selectedPsychic.type === "Astrology") {
-    if (!formData.birthTime.match(/^([01]?\d|2[0-3]):([0-5]?\d)(?::([0-5]?\d))?$/)) {
-    alert("Please enter time in HH:MM or HH:MM:SS format (24-hour)");
-    return;
-  }
-    
-    if (isNaN(formData.latitude) || isNaN(formData.longitude)) {
-      alert("Please enter valid coordinates");
+  if (!selectedPsychic || !user) return;
+
+  const type = selectedPsychic.type;
+
+  // Validate time format for astrology
+  if (type === "Astrology") {
+    if (!formData.birthTime?.match(/^([01]?\d|2[0-3]):([0-5]?\d)(?::([0-5]?\d))?$/)) {
+      alert("Please enter time in HH:MM or HH:MM:SS format (24-hour)");
       return;
     }
   }
-setIsSubmitting(true);
 
-try {
-  const payload = {
-    psychicId: selectedPsychic._id,
-    formData: formData
-  };
+  // Validate coordinates
+  if (type === "Astrology" && (!formData.latitude || !formData.longitude)) {
+    alert("Please enter a valid birth city to get coordinates");
+    return;
+  }
 
-  const response = await axios.post(
-    `${import.meta.env.VITE_BASE_URL}/api/form/submit`,
-    payload,
-    {
-      headers: { 
-        Authorization: `Bearer ${user.token}`,
-        'Content-Type': 'application/json'
+  setIsSubmitting(true);
+
+  try {
+    // Prepare payload based on psychic type
+    const payload = {
+      psychicId: selectedPsychic._id,
+      formData: {
+        ...formData,
+        // Map fields for different types
+        ...(type === "Astrology" && {
+          yourName: formData.yourName,
+          birthDate: formData.birthDate,
+          birthTime: formData.birthTime,
+          birthPlace: formData.birthPlace,
+          latitude: formData.latitude,
+          longitude: formData.longitude
+        }),
+        ...(type === "Love" && {
+          yourLatitude: formData.latitude,
+          yourLongitude: formData.longitude,
+          partnerLatitude: formData.partnerLatitude,
+          partnerLongitude: formData.partnerLongitude
+        })
       }
-    }
-  );
+    };
 
-  if (response.data.success) {
-    navigate(`/chat/${selectedPsychic._id}`);
-  }
-} catch (error) {
-  if (error.response) {
-    if (error.response.data.error?.code === 'MISSING_FIELDS') {
-      const missingFields = error.response.data.error.fields || [];
-      alert(`Please fill in: ${missingFields.join(', ')}`);
+    console.log("Submitting payload:", payload); // Debug log
+
+    const response = await axios.post(
+      `${import.meta.env.VITE_BASE_URL}/api/form/submit`,
+      payload,
+      {
+        headers: {
+          Authorization: `Bearer ${user.token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000 // 10 second timeout
+      }
+    );
+
+    console.log("Submission response:", response.data); // Debug log
+
+    if (response.data.success) {
+      navigate(`/chat/${selectedPsychic._id}`);
     } else {
-      alert(error.response.data.message || "Submission failed");
+      console.error("Submission failed:", response.data);
+      alert(response.data.message || "Submission failed. Please try again.");
     }
-  } else {
-    alert("Network error. Please check your connection.");
+  } catch (error) {
+    console.error("Error details:", {
+      message: error.message,
+      response: error.response?.data,
+      config: error.config
+    });
+
+    if (error.response) {
+      // Handle different error statuses
+      if (error.response.status === 401) {
+        alert("Session expired. Please login again.");
+        navigate('/login');
+      } else if (error.response.data.error?.code === 'MISSING_FIELDS') {
+        const missingFields = error.response.data.error.fields || [];
+        alert(`Please fill in: ${missingFields.join(', ')}`);
+      } else {
+        alert(error.response.data.message || "Submission failed. Please check your data.");
+      }
+    } else if (error.request) {
+      alert("Network error. Please check your internet connection.");
+    } else {
+      alert("An unexpected error occurred. Please try again.");
+    }
+  } finally {
+    setIsSubmitting(false);
   }
-} finally {
-  setIsSubmitting(false);
-}
 };
+
 console.log("Token being sent:", user?.token);
 console.log("Selected psychic:", selectedPsychic);
 console.log("Psychic type:", selectedPsychic?.type);
 
-// Render fields based on psychic category
+if (
+  selectedPsychic &&
+  (selectedPsychic.type === "Astrology" || selectedPsychic.type === "Love") &&
+  formData.yourBirthTime
+) {
+  if (!formData.yourBirthTime.match(/^([01]?\d|2[0-3]):([0-5]?\d)(?::([0-5]?\d))?$/)) {
+    alert("Please enter time in HH:MM or HH:MM:SS format (24-hour)");
+    return;
+  }
+}
+
+
 const renderFormFields = () => {
-if (!selectedPsychic) return null;
+  if (!selectedPsychic || !selectedPsychic.type) return null; // ✅ Prevent crash
 
-const type = selectedPsychic.type.toLowerCase();
+  const type = selectedPsychic.type.toLowerCase(); // Safe now
 
-const commonInput = (label, name, type = "text", placeholder = "", required = false) => (
-  <div className="space-y-2">
-    <Label>{label}{required ? " *" : ""}</Label>
-    <Input
-      type={type}
-      name={name}
-      value={formData[name] || ""}
-      onChange={handleInputChange}
-      placeholder={placeholder}
-      required={required}
-    />
-  </div>
-);
+  const commonInput = (label, name, type = "text", placeholder = "", required = false) => (
+    <div className="space-y-2">
+      <Label>{label}{required ? " *" : ""}</Label>
+      <Input
+        type={type}
+        name={name}
+        value={formData[name] || ""}
+        onChange={handleInputChange}
+        placeholder={placeholder}
+        required={required}
+      />
+    </div>
+  );
 
-switch (type) {
- case "astrology":
+  switch (type) {
+    case "astrology":
   return (
     <>
       {commonInput("Full Name", "yourName", "text", "John Doe", true)}
@@ -217,11 +272,6 @@ switch (type) {
         {commonInput("Time of Birth (HH:MM:SS)", "birthTime", "text", "12:34:56", true)}
       </div>
       {commonInput("Place of Birth", "birthPlace", "text", "City, Country", true)}
-      <div className="grid grid-cols-2 gap-4">
-        {commonInput("Latitude", "latitude", "number", "31.5497", true)}
-        {commonInput("Longitude", "longitude", "number", "74.3436", true)}
-      </div>
-      {/* Add this status display */}
       {isGeocoding && (
         <p className="text-sm text-gray-500">Looking up coordinates for {formData.birthPlace}...</p>
       )}
@@ -232,39 +282,40 @@ switch (type) {
       )}
     </>
   );
-  case "numerology":
-    return (
-      <>
-        {commonInput("Full Name", "yourName", "text", "John Doe", true)}
-        {commonInput("Date of Birth", "birthDate", "date", "", true)}
-      </>
-    );
 
-  case "love":
-    return (
-      <>
-        {commonInput("Your Full Name", "yourName", "text", "Your name", true)}
-        <div className="grid grid-cols-2 gap-4">
-          {commonInput("Your Date of Birth", "yourBirthDate", "date", "", true)}
-          {commonInput("Your Time of Birth", "yourBirthTime", "time")}
-        </div>
-        {commonInput("Your Place of Birth", "yourBirthPlace", "text", "City, Country")}
-        
-        <div className="border-t pt-4 mt-4">
-          <h3 className="font-medium mb-4">Partner Information (Optional)</h3>
-          {commonInput("Partner's Full Name", "partnerName", "text", "Partner's name")}
+    case "numerology":
+      return (
+        <>
+          {commonInput("Full Name", "yourName", "text", "John Doe", true)}
+          {commonInput("Date of Birth", "birthDate", "date", "", true)}
+        </>
+      );
+
+    case "love":
+      return (
+        <>
+          {commonInput("Your Full Name", "yourName", "text", "Your name", true)}
           <div className="grid grid-cols-2 gap-4">
-            {commonInput("Partner's Date of Birth", "partnerBirthDate", "date")}
-            {commonInput("Partner's Time of Birth", "partnerBirthTime", "time")}
+            {commonInput("Your Date of Birth", "yourBirthDate", "date", "", true)}
+            {commonInput("Your Time of Birth", "yourBirthTime", "time")}
           </div>
-          {commonInput("Partner's Place of Birth", "partnerPlaceOfBirth", "text", "City, Country")}
-        </div>
-      </>
-    );
+          {commonInput("Your Place of Birth", "yourBirthPlace", "text", "City, Country")}
+          
+          <div className="border-t pt-4 mt-4">
+            <h3 className="font-medium mb-4">Partner Information (Optional)</h3>
+            {commonInput("Partner's Full Name", "partnerName", "text", "Partner's name")}
+            <div className="grid grid-cols-2 gap-4">
+              {commonInput("Partner's Date of Birth", "partnerBirthDate", "date")}
+              {commonInput("Partner's Time of Birth", "partnerBirthTime", "time")}
+            </div>
+            {commonInput("Partner's Place of Birth", "partnerPlaceOfBirth", "text", "City, Country")}
+          </div>
+        </>
+      );
 
-  default:
-    return null;
-}
+    default:
+      return null;
+  }
 };
 
 
@@ -435,7 +486,12 @@ return (
         </div>
       </div>
     </div>
-<Dialog open={showFormModal} onOpenChange={setShowFormModal}>
+<Dialog open={showFormModal && !!selectedPsychic} onOpenChange={(open) => {
+  if (!open) {
+    setShowFormModal(false);
+    setSelectedPsychic(null); // optional: clear psychic on close
+  }
+}}>
   <DialogContent className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl bg-white rounded-xl shadow-lg z-50 focus:outline-none p-0">
     {selectedPsychic && (
       <div className="max-h-[90vh] overflow-y-auto">
@@ -448,7 +504,9 @@ return (
             Please provide your information for a personalized reading
           </p>
 
-          <div className="space-y-4">{renderFormFields()}</div>
+          <div className="space-y-4">
+            {renderFormFields()} {/* ✅ Now only rendered when psychic is defined */}
+          </div>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-6">
             <Button
@@ -473,6 +531,7 @@ return (
     )}
   </DialogContent>
 </Dialog>
+
  
   </div>
 );

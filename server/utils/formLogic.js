@@ -1,12 +1,15 @@
-const formFieldConfigByType= {
- Astrology: ["yourName", "birthDate", "birthTime", "birthPlace", "latitude","longitude"],
+const formFieldConfigByType = {
+  Astrology: ["yourName", "birthDate", "birthTime", "birthPlace"],
   Numerology: ["yourName", "birthDate"],
-  Love: ["yourName", "yourBirthDate", "partnerName", "partnerBirthDate"],
-  Tarot: [] 
+  Love: [
+    "yourName", "yourBirthDate", "yourBirthTime", "yourBirthPlace",
+    "partnerName", "partnerBirthDate", "partnerBirthTime", "partnerPlaceOfBirth"
+  ],
+  Tarot: []
 };
 
-const getRequiredFieldsByType= (type) =>{
-    return formFieldConfigByType [type] || [];
-
+const getRequiredFieldsByType = (type) => {
+  return formFieldConfigByType[type] || [];
 };
-module.exports = {getRequiredFieldsByType}
+
+module.exports = { getRequiredFieldsByType };
