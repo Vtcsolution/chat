@@ -1,5 +1,20 @@
+// models/HumanChat/Psychic.js
+
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
+
+// Define the category enum
+const psychicCategories = [
+  'Tarot Reading',
+  'Astrology',
+  'Reading',
+  'Love & Relationships',
+  'Career & Finance',
+  'Spiritual Guidance',
+  'Numerology',
+  'Clairvoyant',
+  'Dream Analysis'
+];
 
 const psychicSchema = new mongoose.Schema({
   name: {
@@ -24,11 +39,17 @@ const psychicSchema = new mongoose.Schema({
     required: true,
   },
   socketId: { type: String },
-
   gender: {
     type: String,
     required: true,
     enum: ['male', 'female', 'other'],
+  },
+  // ADD THIS CATEGORY FIELD
+  category: {
+    type: String,
+    required: true,
+    enum: psychicCategories,
+    default: 'Reading'
   },
   isVerified: {
     type: Boolean,
@@ -130,9 +151,6 @@ psychicSchema.virtual('ratingDisplay').get(function() {
   return `${this.averageRating.toFixed(1)} (${this.totalRatings} reviews)`;
 });
 
-// Virtual for online status with logic
-
-
 // Method to update rating stats
 psychicSchema.methods.updateRatingStats = async function() {
   const Rating = require('./Rating');
@@ -158,6 +176,5 @@ psychicSchema.methods.updateRatingStats = async function() {
   };
 };
 
-const Psychic = mongoose.model('Psychic', psychicSchema);
-
-module.exports = Psychic;
+module.exports = mongoose.model('Psychic', psychicSchema);
+module.exports.psychicCategories = psychicCategories;

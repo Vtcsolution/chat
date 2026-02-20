@@ -5,13 +5,10 @@ const MessageBox = require('../../models/HumanChat/MessageBox');
 const HumanChatSession = require('../../models/HumanChat/HumanChatSession');
 const ChatRequest = require('../../models/Paidtimer/ChatRequest');
 const User = require('../../models/User');
+const ActiveCallSession = require('../../models/CallSession/ActiveCallSession'); // Import ActiveCallSession
 const mongoose = require('mongoose');
 
-/**
- * @desc    Get total counts for dashboard
- * @route   GET /api/admin/chats
- * @access  Private/Admin
- */
+
 const getAllChatData = async (req, res) => {
   try {
     // Run all count queries in parallel for better performance
@@ -25,7 +22,12 @@ const getAllChatData = async (req, res) => {
       activePaidTimers,
       pendingRequests,
       recentPsychics,
-      recentSessions
+      recentSessions,
+      // Active Call Sessions
+      totalCallSessions,
+      activeCallSessions,
+      completedCallSessions,
+      totalCallCredits
     ] = await Promise.all([
       // 1. Total Psychics
       Psychic.countDocuments(),
@@ -47,7 +49,7 @@ const getAllChatData = async (req, res) => {
       // 5. Total Users
       User.countDocuments(),
       
-      // 6. Active Sessions
+      // 6. Active Chat Sessions
       HumanChatSession.countDocuments({ status: 'active' }),
       
       // 7. Active Paid Timers
@@ -67,7 +69,33 @@ const getAllChatData = async (req, res) => {
       // 10. Recent Sessions (last 7 days)
       HumanChatSession.countDocuments({
         createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
-      })
+      }),
+      
+      // 11. Total Call Sessions
+      ActiveCallSession.countDocuments(),
+      
+      // 12. Active Call Sessions
+      ActiveCallSession.countDocuments({ status: 'in-progress' }),
+      
+      // 13. Completed Call Sessions
+      ActiveCallSession.countDocuments({ status: 'ended' }),
+      
+      // 14. Total Call Credits (converted to dollars - 1 credit = $1)
+      ActiveCallSession.aggregate([
+        {
+          $match: {
+            status: 'ended',
+            totalCreditsUsed: { $gt: 0 }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalCredits: { $sum: '$totalCreditsUsed' },
+            totalSessions: { $sum: 1 }
+          }
+        }
+      ])
     ]);
 
     // Get total revenue from paid timers
@@ -113,6 +141,40 @@ const getAllChatData = async (req, res) => {
     .sort({ lastMessageAt: -1 })
     .limit(10);
 
+    // Get recent call sessions
+    const recentCallSessions = await ActiveCallSession.find({
+      status: { $in: ['in-progress', 'ended'] }
+    })
+    .populate('userId', 'name email')
+    .populate('psychicId', 'name email ratePerMin')
+    .sort({ updatedAt: -1 })
+    .limit(10);
+
+    // Get call session statistics
+    const callStats = await ActiveCallSession.aggregate([
+      {
+        $match: {
+          status: 'ended',
+          totalCreditsUsed: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalCredits: { $sum: '$totalCreditsUsed' },
+          averageCredits: { $avg: '$totalCreditsUsed' },
+          totalDuration: { 
+            $sum: { 
+              $divide: [
+                { $subtract: ['$endTime', '$startTime'] },
+                60000 // Convert to minutes
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
     // Prepare response data
     const dashboardData = {
       totals: {
@@ -120,12 +182,15 @@ const getAllChatData = async (req, res) => {
         sessions: totalSessions,
         paidTimers: totalPaidTimers,
         chatRequests: totalChatRequests,
-        users: totalUsers
+        users: totalUsers,
+        callSessions: totalCallSessions
       },
       currentStatus: {
         activeSessions,
         activePaidTimers,
-        pendingRequests
+        pendingRequests,
+        activeCallSessions,
+        completedCallSessions
       },
       recentActivity: {
         psychics: recentPsychics,
@@ -135,7 +200,18 @@ const getAllChatData = async (req, res) => {
         totalRevenue: revenueStats[0]?.totalRevenue || 0,
         totalPaidTime: Math.round((revenueStats[0]?.totalSeconds || 0) / 3600 * 100) / 100, // in hours
         avgSessionValue: revenueStats[0]?.count > 0 ? 
-          Math.round((revenueStats[0]?.totalRevenue / revenueStats[0]?.count) * 100) / 100 : 0
+          Math.round((revenueStats[0]?.totalRevenue / revenueStats[0]?.count) * 100) / 100 : 0,
+        // Call revenue (1 credit = $1)
+        totalCallRevenue: totalCallCredits[0]?.totalCredits || 0,
+        averageCallValue: callStats[0]?.averageCredits || 0,
+        totalCallMinutes: Math.round(callStats[0]?.totalDuration || 0)
+      },
+      callStatistics: {
+        totalSessions: totalCallSessions,
+        activeSessions: activeCallSessions,
+        completedSessions: completedCallSessions,
+        totalCreditsUsed: totalCallCredits[0]?.totalCredits || 0,
+        averageCallDuration: Math.round(callStats[0]?.averageCredits || 0) // minutes
       },
       lists: {
         psychics: psychicList,
@@ -155,6 +231,19 @@ const getAllChatData = async (req, res) => {
           status: session.status,
           duration: session.sessionDuration || 0,
           lastMessageAt: session.lastMessageAt
+        })),
+        recentCallSessions: recentCallSessions.map(call => ({
+          _id: call._id,
+          user: call.userId?.name || 'Unknown User',
+          psychic: call.psychicId?.name || 'Unknown Psychic',
+          status: call.status,
+          duration: call.startTime && call.endTime ? 
+            Math.round((new Date(call.endTime) - new Date(call.startTime)) / 60000) : 0, // in minutes
+          creditsUsed: call.totalCreditsUsed || 0,
+          revenue: call.totalCreditsUsed || 0, // 1 credit = $1
+          startTime: call.startTime,
+          endTime: call.endTime,
+          isFreeSession: call.isFreeSession
         }))
       },
       timestamp: new Date().toISOString(),
@@ -221,11 +310,18 @@ const getPsychicDetails = async (req, res) => {
       .sort({ endedAt: -1 })
       .limit(20);
 
-    // 4. Calculate statistics
+    // 4. Get call sessions for this psychic
+    const callSessions = await ActiveCallSession.find({ psychicId: id })
+      .populate('userId', 'name email')
+      .sort({ createdAt: -1 })
+      .limit(20);
+
+    // 5. Calculate statistics
     const totalSessions = chatSessions.length;
     const totalPaidTimers = paidTimers.length;
+    const totalCallSessions = callSessions.length;
     
-    // Calculate total earnings
+    // Calculate total earnings from paid timers
     const earningsStats = await ChatRequest.aggregate([
       {
         $match: {
@@ -244,25 +340,66 @@ const getPsychicDetails = async (req, res) => {
       }
     ]);
 
+    // Calculate total earnings from call sessions (1 credit = $1)
+    const callEarningsStats = await ActiveCallSession.aggregate([
+      {
+        $match: {
+          psychicId: new mongoose.Types.ObjectId(id),
+          status: 'ended',
+          totalCreditsUsed: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: '$psychicId',
+          totalEarnings: { $sum: '$totalCreditsUsed' }, // 1 credit = $1
+          totalSessions: { $sum: 1 },
+          totalDuration: { 
+            $sum: { 
+              $divide: [
+                { $subtract: ['$endTime', '$startTime'] },
+                60000 // Convert to minutes
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
     const earningsData = earningsStats[0] || {
       totalEarnings: 0,
       totalSessions: 0,
       totalTime: 0
     };
 
-    // 5. Get recent reviews/ratings (if available in your model)
+    const callEarningsData = callEarningsStats[0] || {
+      totalEarnings: 0,
+      totalSessions: 0,
+      totalDuration: 0
+    };
+
+    // Combine total earnings
+    const totalEarnings = earningsData.totalEarnings + callEarningsData.totalEarnings;
+
+    // 6. Get recent reviews/ratings (if available in your model)
     const recentReviews = psychic.reviews || [];
 
-    // 6. Calculate performance metrics
+    // 7. Calculate performance metrics
     const activeChats = chatSessions.filter(session => session.status === 'active').length;
+    const activeCalls = callSessions.filter(call => call.status === 'in-progress').length;
     const completedChats = chatSessions.filter(session => session.status === 'ended' || session.status === 'completed').length;
+    const completedCalls = callSessions.filter(call => call.status === 'ended').length;
     
-    // Calculate average session duration
-    const totalDuration = chatSessions.reduce((sum, session) => sum + (session.sessionDuration || 0), 0);
-    const avgSessionDuration = totalSessions > 0 ? Math.round(totalDuration / totalSessions / 60) : 0; // in minutes
+    // Calculate average session duration for chats
+    const totalChatDuration = chatSessions.reduce((sum, session) => sum + (session.sessionDuration || 0), 0);
+    const avgChatDuration = totalSessions > 0 ? Math.round(totalChatDuration / totalSessions / 60) : 0; // in minutes
+    
+    // Calculate average call duration
+    const avgCallDuration = totalCallSessions > 0 ? 
+      Math.round(callEarningsData.totalDuration / totalCallSessions) : 0; // in minutes
 
-    // 7. Get popular user interactions (most frequent users)
-    const userInteractions = await ChatRequest.aggregate([
+    // 8. Get popular user interactions (most frequent users) from both chats and calls
+    const chatUserInteractions = await ChatRequest.aggregate([
       {
         $match: { psychic: new mongoose.Types.ObjectId(id) }
       },
@@ -271,43 +408,63 @@ const getPsychicDetails = async (req, res) => {
           _id: '$user',
           totalSessions: { $sum: 1 },
           totalSpent: { $sum: '$totalAmountPaid' },
-          lastSession: { $max: '$endedAt' }
+          lastSession: { $max: '$endedAt' },
+          type: { $first: 'chat' }
         }
-      },
-      {
-        $lookup: {
-          from: 'users',
-          localField: '_id',
-          foreignField: '_id',
-          as: 'userDetails'
-        }
-      },
-      {
-        $unwind: '$userDetails'
-      },
-      {
-        $project: {
-          userId: '$_id',
-          userName: '$userDetails.name',
-          userEmail: '$userDetails.email',
-          totalSessions: 1,
-          totalSpent: 1,
-          lastSession: 1
-        }
-      },
-      {
-        $sort: { totalSessions: -1 }
       },
       {
         $limit: 10
       }
     ]);
 
-    // 8. Get monthly earnings (last 6 months)
+    const callUserInteractions = await ActiveCallSession.aggregate([
+      {
+        $match: { 
+          psychicId: new mongoose.Types.ObjectId(id),
+          status: 'ended'
+        }
+      },
+      {
+        $group: {
+          _id: '$userId',
+          totalSessions: { $sum: 1 },
+          totalSpent: { $sum: '$totalCreditsUsed' }, // 1 credit = $1
+          lastSession: { $max: '$endTime' },
+          type: { $first: 'call' }
+        }
+      },
+      {
+        $limit: 10
+      }
+    ]);
+
+    // Combine and sort user interactions
+    const allUserInteractions = [...chatUserInteractions, ...callUserInteractions];
+    
+    // Get user details for all interactions
+    const userInteractions = await Promise.all(
+      allUserInteractions.map(async (interaction) => {
+        const user = await User.findById(interaction._id).select('name email');
+        return {
+          userId: interaction._id,
+          userName: user?.name || 'Unknown User',
+          userEmail: user?.email || '',
+          totalSessions: interaction.totalSessions,
+          totalSpent: interaction.totalSpent,
+          lastSession: interaction.lastSession,
+          type: interaction.type
+        };
+      })
+    );
+
+    // Sort by total spent descending
+    userInteractions.sort((a, b) => b.totalSpent - a.totalSpent);
+
+    // 9. Get monthly earnings (last 6 months) - combined
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
-    const monthlyEarnings = await ChatRequest.aggregate([
+    const chatMonthlyEarnings = await ChatRequest.aggregate([
       {
         $match: {
           psychic: new mongoose.Types.ObjectId(id),
@@ -327,31 +484,75 @@ const getPsychicDetails = async (req, res) => {
             $sum: { 
               $divide: ['$paidSession.totalSeconds', 60] 
             } 
-          }
-        }
-      },
-      {
-        $sort: { '_id.year': 1, '_id.month': 1 }
-      },
-      {
-        $project: {
-          month: '$_id.month',
-          year: '$_id.year',
-          totalEarnings: 1,
-          sessionCount: 1,
-          totalMinutes: 1,
-          period: {
-            $concat: [
-              { $arrayElemAt: [['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], { $subtract: ['$_id.month', 1] }] },
-              ' ',
-              { $toString: '$_id.year' }
-            ]
-          }
+          },
+          type: { $first: 'chat' }
         }
       }
     ]);
 
-    // 9. Prepare the response data
+    const callMonthlyEarnings = await ActiveCallSession.aggregate([
+      {
+        $match: {
+          psychicId: new mongoose.Types.ObjectId(id),
+          endTime: { $gte: sixMonthsAgo },
+          status: 'ended',
+          totalCreditsUsed: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$endTime' },
+            month: { $month: '$endTime' }
+          },
+          totalEarnings: { $sum: '$totalCreditsUsed' },
+          sessionCount: { $sum: 1 },
+          totalMinutes: { 
+            $sum: { 
+              $divide: [
+                { $subtract: ['$endTime', '$startTime'] },
+                60000
+              ]
+            } 
+          },
+          type: { $first: 'call' }
+        }
+      }
+    ]);
+
+    // Combine monthly earnings
+    const monthlyEarningsMap = new Map();
+    
+    [...chatMonthlyEarnings, ...callMonthlyEarnings].forEach(item => {
+      const key = `${item._id.year}-${item._id.month}`;
+      if (monthlyEarningsMap.has(key)) {
+        const existing = monthlyEarningsMap.get(key);
+        existing.totalEarnings += item.totalEarnings;
+        existing.sessionCount += item.sessionCount;
+        existing.totalMinutes += item.totalMinutes;
+      } else {
+        monthlyEarningsMap.set(key, {
+          ...item,
+          _id: item._id
+        });
+      }
+    });
+
+    const monthlyEarnings = Array.from(monthlyEarningsMap.values())
+      .sort((a, b) => {
+        if (a._id.year !== b._id.year) return a._id.year - b._id.year;
+        return a._id.month - b._id.month;
+      })
+      .map(item => ({
+        month: item._id.month,
+        year: item._id.year,
+        totalEarnings: item.totalEarnings,
+        sessionCount: item.sessionCount,
+        totalMinutes: Math.round(item.totalMinutes),
+        period: getMonthName(item._id.month) + ' ' + item._id.year
+      }));
+
+    // 10. Prepare the response data
     const psychicDetails = {
       profile: {
         ...psychic,
@@ -360,33 +561,43 @@ const getPsychicDetails = async (req, res) => {
       },
       statistics: {
         totals: {
-          sessions: totalSessions,
+          chatSessions: totalSessions,
           paidTimers: totalPaidTimers,
-          earnings: earningsData.totalEarnings,
-          hoursWorked: Math.round(earningsData.totalTime / 3600 * 100) / 100,
+          callSessions: totalCallSessions,
+          totalEarnings: totalEarnings,
+          chatEarnings: earningsData.totalEarnings,
+          callEarnings: callEarningsData.totalEarnings,
+          hoursWorked: Math.round((earningsData.totalTime / 3600 + callEarningsData.totalDuration / 60) * 100) / 100,
           ratings: psychic.totalRatings || 0,
           averageRating: psychic.averageRating || 0
         },
         current: {
           activeChats: activeChats,
+          activeCalls: activeCalls,
           pendingRequests: await ChatRequest.countDocuments({ psychic: id, status: 'pending' }),
-          avgSessionDuration: avgSessionDuration
+          avgChatDuration: avgChatDuration,
+          avgCallDuration: avgCallDuration
         },
         performance: {
-          completionRate: totalSessions > 0 ? Math.round((completedChats / totalSessions) * 100) : 0,
-          avgEarningsPerSession: earningsData.totalSessions > 0 ? 
+          chatCompletionRate: totalSessions > 0 ? Math.round((completedChats / totalSessions) * 100) : 0,
+          callCompletionRate: totalCallSessions > 0 ? Math.round((completedCalls / totalCallSessions) * 100) : 0,
+          avgEarningsPerChat: earningsData.totalSessions > 0 ? 
             Math.round((earningsData.totalEarnings / earningsData.totalSessions) * 100) / 100 : 0,
-          earningsPerHour: earningsData.totalTime > 0 ? 
-            Math.round((earningsData.totalEarnings / (earningsData.totalTime / 3600)) * 100) / 100 : 0
+          avgEarningsPerCall: callEarningsData.totalSessions > 0 ? 
+            Math.round((callEarningsData.totalEarnings / callEarningsData.totalSessions) * 100) / 100 : 0,
+          earningsPerHour: calculateEarningsPerHour(earningsData, callEarningsData)
         }
       },
       financials: {
-        totalEarnings: earningsData.totalEarnings,
+        totalEarnings: totalEarnings,
+        chatEarnings: earningsData.totalEarnings,
+        callEarnings: callEarningsData.totalEarnings,
         avgEarningsPerMonth: monthlyEarnings.length > 0 ? 
           Math.round(monthlyEarnings.reduce((sum, month) => sum + month.totalEarnings, 0) / monthlyEarnings.length * 100) / 100 : 0,
         monthlyBreakdown: monthlyEarnings,
-        ratePerMinute: psychic.ratePerMin,
-        estimatedMonthlyEarnings: psychic.ratePerMin * 40 * 20 * 4 // rate * 40min/session * 20sessions/week * 4weeks
+        chatRatePerMinute: psychic.ratePerMin,
+        callRatePerMinute: 1, // 1 credit = $1 per minute for calls
+        estimatedMonthlyEarnings: calculateEstimatedMonthlyEarnings(psychic.ratePerMin)
       },
       recentActivity: {
         chatSessions: chatSessions.map(session => ({
@@ -396,7 +607,8 @@ const getPsychicDetails = async (req, res) => {
           duration: session.sessionDuration || 0,
           lastMessageAt: session.lastMessageAt,
           startedAt: session.startedAt,
-          endedAt: session.endedAt
+          endedAt: session.endedAt,
+          type: 'chat'
         })),
         paidTimers: paidTimers.map(timer => ({
           _id: timer._id,
@@ -405,21 +617,35 @@ const getPsychicDetails = async (req, res) => {
           duration: timer.paidSession?.totalSeconds ? Math.round(timer.paidSession.totalSeconds / 60 * 100) / 100 : 0,
           status: timer.status,
           endedAt: timer.endedAt,
-          isActive: timer.paidSession?.isActive || false
+          isActive: timer.paidSession?.isActive || false,
+          type: 'paid_timer'
+        })),
+        callSessions: callSessions.map(call => ({
+          _id: call._id,
+          user: call.userId?.name || 'Unknown User',
+          amount: call.totalCreditsUsed || 0,
+          duration: call.startTime && call.endTime ? 
+            Math.round((new Date(call.endTime) - new Date(call.startTime)) / 60000) : 0,
+          status: call.status,
+          startTime: call.startTime,
+          endTime: call.endTime,
+          isFreeSession: call.isFreeSession,
+          type: 'call'
         })),
         recentReviews: recentReviews.slice(0, 5)
       },
-      userInteractions: userInteractions,
+      userInteractions: userInteractions.slice(0, 10),
       timeline: {
         createdAt: psychic.createdAt,
-        lastActive: chatSessions[0]?.lastMessageAt || psychic.updatedAt,
-        totalOnlineTime: Math.round(earningsData.totalTime / 3600 * 100) / 100
+        lastActive: getLastActiveTime(chatSessions, callSessions),
+        totalOnlineTime: Math.round((earningsData.totalTime / 3600 + callEarningsData.totalDuration / 60) * 100) / 100
       },
       metadata: {
         lastUpdated: new Date(),
         dataPoints: {
-          sessionsAnalyzed: totalSessions,
+          chatSessionsAnalyzed: totalSessions,
           paidTimersAnalyzed: totalPaidTimers,
+          callSessionsAnalyzed: totalCallSessions,
           monthsAnalyzed: monthlyEarnings.length
         }
       }
@@ -441,11 +667,6 @@ const getPsychicDetails = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get all psychics with summary statistics
- * @route   GET /api/admin/chats/psychics
- * @access  Private/Admin
- */
 /**
  * @desc    Get all psychics with summary statistics
  * @route   GET /api/admin/chats/psychics
@@ -477,8 +698,8 @@ const getAllPsychics = async (req, res) => {
     // Get earnings and session counts for each psychic in parallel
     const psychicsWithStats = await Promise.all(
       psychics.map(async (psychic) => {
-        // Get earnings stats
-        const earningsStats = await ChatRequest.aggregate([
+        // Get chat earnings stats
+        const chatEarningsStats = await ChatRequest.aggregate([
           {
             $match: {
               psychic: psychic._id,
@@ -496,51 +717,123 @@ const getAllPsychics = async (req, res) => {
           }
         ]);
 
-        const earningsData = earningsStats[0] || {
+        // Get call earnings stats
+        const callEarningsStats = await ActiveCallSession.aggregate([
+          {
+            $match: {
+              psychicId: psychic._id,
+              status: 'ended',
+              totalCreditsUsed: { $gt: 0 }
+            }
+          },
+          {
+            $group: {
+              _id: '$psychicId',
+              totalEarnings: { $sum: '$totalCreditsUsed' },
+              totalSessions: { $sum: 1 },
+              totalDuration: { 
+                $sum: { 
+                  $divide: [
+                    { $subtract: ['$endTime', '$startTime'] },
+                    60000
+                  ]
+                } 
+              }
+            }
+          }
+        ]);
+
+        const chatData = chatEarningsStats[0] || {
           totalEarnings: 0,
           totalSessions: 0,
           totalTime: 0
         };
 
-        // Get active sessions count
-        const activeSessions = await HumanChatSession.countDocuments({
-          psychic: psychic._id,
-          status: 'active'
-        });
+        const callData = callEarningsStats[0] || {
+          totalEarnings: 0,
+          totalSessions: 0,
+          totalDuration: 0
+        };
+
+        // Get active sessions counts
+        const [activeChats, activeCalls] = await Promise.all([
+          HumanChatSession.countDocuments({
+            psychic: psychic._id,
+            status: 'active'
+          }),
+          ActiveCallSession.countDocuments({
+            psychicId: psychic._id,
+            status: 'in-progress'
+          })
+        ]);
+
+        const totalEarnings = chatData.totalEarnings + callData.totalEarnings;
+        const totalSessions = chatData.totalSessions + callData.totalSessions;
+        const totalHours = (chatData.totalTime / 3600) + (callData.totalDuration / 60);
 
         return {
           ...psychic,
           statistics: {
-            totalEarnings: earningsData.totalEarnings,
-            totalSessions: earningsData.totalSessions,
-            totalHours: Math.round(earningsData.totalTime / 3600 * 100) / 100,
-            activeSessions: activeSessions,
-            avgSessionValue: earningsData.totalSessions > 0 ? 
-              Math.round((earningsData.totalEarnings / earningsData.totalSessions) * 100) / 100 : 0,
-            earningsPerHour: earningsData.totalTime > 0 ? 
-              Math.round((earningsData.totalEarnings / (earningsData.totalTime / 3600)) * 100) / 100 : 0
+            totalEarnings: totalEarnings,
+            chatEarnings: chatData.totalEarnings,
+            callEarnings: callData.totalEarnings,
+            totalSessions: totalSessions,
+            chatSessions: chatData.totalSessions,
+            callSessions: callData.totalSessions,
+            totalHours: Math.round(totalHours * 100) / 100,
+            activeChats: activeChats,
+            activeCalls: activeCalls,
+            avgSessionValue: totalSessions > 0 ? 
+              Math.round((totalEarnings / totalSessions) * 100) / 100 : 0,
+            earningsPerHour: totalHours > 0 ? 
+              Math.round((totalEarnings / totalHours) * 100) / 100 : 0
           }
         };
       })
     );
 
-    // Calculate overall statistics
-    const overallStats = await ChatRequest.aggregate([
-      {
-        $match: {
-          status: { $in: ['completed', 'active'] },
-          totalAmountPaid: { $gt: 0 }
+    // Calculate overall statistics including calls
+    const [chatOverallStats, callOverallStats] = await Promise.all([
+      ChatRequest.aggregate([
+        {
+          $match: {
+            status: { $in: ['completed', 'active'] },
+            totalAmountPaid: { $gt: 0 }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalEarnings: { $sum: '$totalAmountPaid' },
+            totalSessions: { $sum: 1 },
+            avgEarningsPerSession: { $avg: '$totalAmountPaid' }
+          }
         }
-      },
-      {
-        $group: {
-          _id: null,
-          totalEarnings: { $sum: '$totalAmountPaid' },
-          totalSessions: { $sum: 1 },
-          avgEarningsPerSession: { $avg: '$totalAmountPaid' }
+      ]),
+      ActiveCallSession.aggregate([
+        {
+          $match: {
+            status: 'ended',
+            totalCreditsUsed: { $gt: 0 }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            totalEarnings: { $sum: '$totalCreditsUsed' },
+            totalSessions: { $sum: 1 },
+            avgEarningsPerSession: { $avg: '$totalCreditsUsed' }
+          }
         }
-      }
+      ])
     ]);
+
+    const chatOverall = chatOverallStats[0] || { totalEarnings: 0, totalSessions: 0, avgEarningsPerSession: 0 };
+    const callOverall = callOverallStats[0] || { totalEarnings: 0, totalSessions: 0, avgEarningsPerSession: 0 };
+
+    const totalEarningsOverall = chatOverall.totalEarnings + callOverall.totalEarnings;
+    const totalSessionsOverall = chatOverall.totalSessions + callOverall.totalSessions;
+    const avgEarningsOverall = totalSessionsOverall > 0 ? totalEarningsOverall / totalSessionsOverall : 0;
 
     const response = {
       success: true,
@@ -554,9 +847,13 @@ const getAllPsychics = async (req, res) => {
         },
         summary: {
           totalPsychics: totalPsychics,
-          totalEarnings: overallStats[0]?.totalEarnings || 0,
-          totalSessions: overallStats[0]?.totalSessions || 0,
-          avgEarningsPerSession: overallStats[0]?.avgEarningsPerSession || 0
+          totalEarnings: totalEarningsOverall,
+          chatEarnings: chatOverall.totalEarnings,
+          callEarnings: callOverall.totalEarnings,
+          totalSessions: totalSessionsOverall,
+          chatSessions: chatOverall.totalSessions,
+          callSessions: callOverall.totalSessions,
+          avgEarningsPerSession: avgEarningsOverall
         }
       },
       message: 'Psychics list retrieved successfully'
@@ -575,21 +872,10 @@ const getAllPsychics = async (req, res) => {
     });
   }
 };
-// Helper function to format user name properly
-const formatUserName = (user) => {
-  if (!user) return 'Unknown User';
-  
-  // Check different possible name fields
-  if (user.name) return user.name;
-  if (user.fullName) return user.fullName;
-  if (user.firstName || user.lastName) {
-    return `${user.firstName || ''} ${user.lastName || ''}`.trim();
-  }
-  if (user.email) return user.email.split('@')[0]; // Use email prefix as fallback
-  
-  return 'Unknown User';
-};
 
+/**
+ * @desc    Get chat by ID (existing function, updated with call info)
+ */
 const getChatById = async (req, res) => {
   try {
     const { id } = req.params;
@@ -603,7 +889,7 @@ const getChatById = async (req, res) => {
 
     console.log(`🔍 Fetching chat session with ID: ${id}`);
 
-    // 1. Get the HumanChatSession by ID - UPDATED POPULATE FIELDS
+    // 1. Get the HumanChatSession by ID
     const chatSession = await HumanChatSession.findById(id)
       .populate('user', 'firstName lastName email avatar fullName phone country')
       .populate('psychic', 'name email image ratePerMin abilities averageRating totalRatings bio gender isVerified type')
@@ -612,13 +898,12 @@ const getChatById = async (req, res) => {
     if (!chatSession) {
       console.log(`❌ HumanChatSession not found: ${id}`);
       
-      // Try to find as ChatRequest and see if there's a related session
+      // Try to find as ChatRequest
       const chatRequest = await ChatRequest.findById(id)
         .populate('user', 'firstName lastName email avatar')
         .populate('psychic', 'name email image ratePerMin');
       
       if (chatRequest) {
-        // Find related HumanChatSession for this ChatRequest
         const relatedSession = await HumanChatSession.findOne({
           user: chatRequest.user,
           psychic: chatRequest.psychic
@@ -648,10 +933,8 @@ const getChatById = async (req, res) => {
     }
 
     console.log(`✅ Found HumanChatSession: ${id}`);
-    console.log('👤 User:', chatSession.user);
-    console.log(`🔮 Psychic: ${chatSession.psychic?.name || chatSession.psychic}`);
 
-    // 2. Get all messages for this chat session - UPDATED POPULATE FIELDS
+    // 2. Get all messages for this chat session
     const messages = await MessageBox.find({ 
       chatSession: id 
     })
@@ -661,9 +944,7 @@ const getChatById = async (req, res) => {
     .sort({ createdAt: 1 })
     .lean();
 
-    console.log(`📨 Found ${messages.length} messages for session: ${id}`);
-
-    // 3. Get related ChatRequest (paid timer) if exists
+    // 3. Get related ChatRequest (paid timer)
     const chatRequest = await ChatRequest.findOne({
       user: chatSession.user?._id || chatSession.user,
       psychic: chatSession.psychic?._id || chatSession.psychic
@@ -671,9 +952,20 @@ const getChatById = async (req, res) => {
     .sort({ createdAt: -1 })
     .lean();
 
-    console.log(`💰 Found chat request: ${chatRequest ? 'Yes' : 'No'}`);
+    // 4. Get related CallSession if any
+    const callSession = await ActiveCallSession.findOne({
+      $or: [
+        { 
+          userId: chatSession.user?._id || chatSession.user,
+          psychicId: chatSession.psychic?._id || chatSession.psychic
+        },
+        { callRequestId: chatRequest?._id }
+      ]
+    })
+    .sort({ createdAt: -1 })
+    .lean();
 
-    // 4. Calculate session statistics
+    // 5. Calculate session statistics
     const sessionStats = await MessageBox.aggregate([
       { $match: { chatSession: new mongoose.Types.ObjectId(id) } },
       {
@@ -708,7 +1000,7 @@ const getChatById = async (req, res) => {
       mediaMessages: 0
     };
 
-    // 5. Calculate duration
+    // 6. Calculate duration
     let duration = 0;
     if (stats.firstMessageTime && stats.lastMessageTime) {
       duration = new Date(stats.lastMessageTime) - new Date(stats.firstMessageTime);
@@ -719,7 +1011,7 @@ const getChatById = async (req, res) => {
       duration = chatSession.sessionDuration;
     }
 
-    // 6. Prepare participant information
+    // 7. Prepare participant information
     const participants = {
       user: {
         _id: chatSession.user?._id || chatSession.user,
@@ -743,12 +1035,11 @@ const getChatById = async (req, res) => {
       }
     };
 
-    // 7. Prepare message history with formatted data
+    // 8. Prepare message history with formatted data
     const formattedMessages = messages.map(msg => {
       const senderId = msg.sender?._id?.toString() || msg.sender?.toString();
       const isUser = senderId === participants.user._id.toString();
       
-      // Determine sender info
       let senderInfo = {
         _id: msg.sender?._id || msg.sender,
         type: isUser ? 'user' : 'psychic'
@@ -762,7 +1053,6 @@ const getChatById = async (req, res) => {
         senderInfo.avatar = participants.psychic.image;
       }
       
-      // Determine receiver info
       let receiverInfo = {
         _id: msg.receiver?._id || msg.receiver,
         type: isUser ? 'psychic' : 'user'
@@ -774,7 +1064,6 @@ const getChatById = async (req, res) => {
         receiverInfo.name = participants.user.name;
       }
       
-      // Use message sender/receiver data if available, otherwise use participants data
       if (msg.sender) {
         const senderName = formatUserName(msg.sender);
         if (senderName && senderName !== 'Unknown User') {
@@ -809,7 +1098,7 @@ const getChatById = async (req, res) => {
       };
     });
 
-    // 8. Prepare chat request/payment info
+    // 9. Prepare chat request/payment info
     const paymentInfo = chatRequest ? {
       _id: chatRequest._id,
       status: chatRequest.status,
@@ -829,7 +1118,23 @@ const getChatById = async (req, res) => {
       deductions: chatRequest.deductions || []
     } : null;
 
-    // 9. Prepare response data
+    // 10. Prepare call session info if exists
+    const callInfo = callSession ? {
+      _id: callSession._id,
+      roomName: callSession.roomName,
+      status: callSession.status,
+      startTime: callSession.startTime,
+      endTime: callSession.endTime,
+      creditsUsed: callSession.totalCreditsUsed || 0,
+      revenue: callSession.totalCreditsUsed || 0, // 1 credit = $1
+      duration: callSession.startTime && callSession.endTime ? 
+        Math.round((new Date(callSession.endTime) - new Date(callSession.startTime)) / 60000) : 0, // minutes
+      isFreeSession: callSession.isFreeSession,
+      recordingUrl: callSession.recordingUrl,
+      endReason: callSession.endReason
+    } : null;
+
+    // 11. Prepare response data
     const chatData = {
       session: {
         _id: chatSession._id,
@@ -875,17 +1180,18 @@ const getChatById = async (req, res) => {
         }
       },
       payment: paymentInfo,
+      call: callInfo,
       metadata: {
         sessionType: paymentInfo?.hasPaidTimer ? 'paid' : 'free',
         hasMedia: stats.mediaMessages > 0,
         isActive: chatSession.status === 'active',
         chatStarted: chatSession.startedAt ? true : false,
-        chatEnded: chatSession.endedAt ? true : false
+        chatEnded: chatSession.endedAt ? true : false,
+        hasCall: !!callInfo
       }
     };
 
     console.log(`✅ Successfully retrieved chat data for session: ${id}`);
-    console.log(`👤 User Name: ${participants.user.name}`);
 
     res.status(200).json({
       success: true,
@@ -903,7 +1209,28 @@ const getChatById = async (req, res) => {
   }
 };
 
-// Helper function to calculate average response time
+// ============= HELPER FUNCTIONS =============
+
+/**
+ * Helper function to format user name properly
+ */
+const formatUserName = (user) => {
+  if (!user) return 'Unknown User';
+  
+  // Check different possible name fields
+  if (user.name) return user.name;
+  if (user.fullName) return user.fullName;
+  if (user.firstName || user.lastName) {
+    return `${user.firstName || ''} ${user.lastName || ''}`.trim();
+  }
+  if (user.email) return user.email.split('@')[0]; // Use email prefix as fallback
+  
+  return 'Unknown User';
+};
+
+/**
+ * Helper function to calculate average response time
+ */
 const calculateAverageResponseTime = (messages) => {
   if (messages.length < 2) return 0;
   
@@ -926,7 +1253,9 @@ const calculateAverageResponseTime = (messages) => {
     Math.round(totalResponseTime / responseCount / 1000) : 0; // in seconds
 };
 
-// Helper function to format duration
+/**
+ * Helper function to format duration
+ */
 const formatDuration = (seconds) => {
   if (!seconds) return '0 seconds';
   
@@ -942,22 +1271,83 @@ const formatDuration = (seconds) => {
   return parts.join(', ');
 };
 
+/**
+ * Helper function to get month name
+ */
+const getMonthName = (monthNumber) => {
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return months[monthNumber - 1] || 'Unknown';
+};
+
+/**
+ * Helper function to calculate earnings per hour
+ */
+const calculateEarningsPerHour = (chatData, callData) => {
+  const totalHours = (chatData.totalTime / 3600) + (callData.totalDuration / 60);
+  const totalEarnings = chatData.totalEarnings + callData.totalEarnings;
+  
+  if (totalHours === 0) return 0;
+  return Math.round((totalEarnings / totalHours) * 100) / 100;
+};
+
+/**
+ * Helper function to get last active time
+ */
+const getLastActiveTime = (chatSessions, callSessions) => {
+  const allActivities = [
+    ...chatSessions.map(s => s.lastMessageAt || s.updatedAt),
+    ...callSessions.map(c => c.endTime || c.updatedAt)
+  ].filter(Boolean);
+  
+  if (allActivities.length === 0) return null;
+  return new Date(Math.max(...allActivities.map(d => new Date(d))));
+};
+
+/**
+ * Helper function to calculate estimated monthly earnings
+ */
+const calculateEstimatedMonthlyEarnings = (chatRatePerMin) => {
+  // Estimate: 40 min/session, 20 sessions/week, 4 weeks/month for chats
+  const chatEstimate = chatRatePerMin * 40 * 20 * 4;
+  // Estimate: 30 min/call, 15 calls/week, 4 weeks/month for calls (1 credit/min = $1/min)
+  const callEstimate = 1 * 30 * 15 * 4;
+  
+  return chatEstimate + callEstimate;
+};
+
+// ============= LEGACY ENDPOINTS =============
+
+/**
+ * @desc    Legacy endpoint for user chats (no longer available)
+ */
+const getUserChats = (req, res) => res.status(200).json({ 
+  success: true, 
+  message: 'This endpoint is no longer available' 
+});
+
+/**
+ * @desc    Legacy endpoint for psychic chats (no longer available)
+ */
+const getPsychicChats = (req, res) => res.status(200).json({ 
+  success: true, 
+  message: 'This endpoint is no longer available' 
+});
+
+/**
+ * @desc    Legacy endpoint for chat requests (no longer available)
+ */
+const getChatRequests = (req, res) => res.status(200).json({ 
+  success: true, 
+  message: 'This endpoint is no longer available' 
+});
+
 // Export controllers
 module.exports = {
   getAllChatData,
   getChatById,
   getPsychicDetails,
   getAllPsychics,
-  getUserChats: (req, res) => res.status(200).json({ 
-    success: true, 
-    message: 'This endpoint is no longer available' 
-  }),
-  getPsychicChats: (req, res) => res.status(200).json({ 
-    success: true, 
-    message: 'This endpoint is no longer available' 
-  }),
-  getChatRequests: (req, res) => res.status(200).json({ 
-    success: true, 
-    message: 'This endpoint is no longer available' 
-  })
+  getUserChats,
+  getPsychicChats,
+  getChatRequests
 };

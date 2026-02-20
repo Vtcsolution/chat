@@ -1,20 +1,25 @@
+// src/hooks/usePsychicCalls.js
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import axios from 'axios';
-import audioSocketManager from '@/utils/audioSocket'; // Import the manager
+import audioSocketManager from '@/utils/audioSocket';
 
 export const usePsychicCalls = () => {
   const [pendingCalls, setPendingCalls] = useState([]);
   const [activeCall, setActiveCall] = useState(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [callTimers, setCallTimers] = useState({});
   
   const socketRef = useRef(null);
-  const timerRef = useRef(null);
+  const timerRef = useRef({});
+  const pollIntervalRef = useRef(null);
+  const pendingCallTimerRef = useRef(null);
+  
   const psychicId = localStorage.getItem('psychicId');
   const psychicToken = localStorage.getItem('psychicToken');
 
-  // Create axios instance
+  // Create axios instance with auth
   const api = axios.create({
     baseURL: import.meta.env.VITE_BASE_URL || 'http://localhost:5001',
     timeout: 10000,
@@ -26,78 +31,100 @@ export const usePsychicCalls = () => {
   // Initialize socket connection
   const initializeSocket = useCallback(() => {
     if (!psychicId || !psychicToken) {
-      console.log('❌ Cannot initialize audio socket: Missing psychic ID or token');
-      return;
+      console.log('❌ Cannot initialize: Missing psychic credentials');
+      return null;
     }
 
     console.log('🔌 Initializing audio socket for psychic:', psychicId);
     
-    // Disconnect existing audio socket
+    // Disconnect existing
     audioSocketManager.disconnect();
     
     // Connect to audio namespace
     const socket = audioSocketManager.connect(psychicId, psychicToken);
     socketRef.current = socket;
 
-    // Listen for audio socket events
+    // Socket event handlers
     socket.on('connect', () => {
-      console.log('✅ Audio socket connected via manager');
+      console.log('✅ Audio socket connected');
       setSocketConnected(true);
     });
 
     socket.on('disconnect', () => {
-      console.log('❌ Audio socket disconnected via manager');
+      console.log('❌ Audio socket disconnected');
       setSocketConnected(false);
     });
 
-    socket.on('incoming-call', (data) => {
-      console.log('📞 Incoming call received:', data);
+    socket.on('pending-calls', (calls) => {
+      console.log('📋 Received pending calls:', calls?.length || 0);
       
+      // Add time remaining to each call
+      const now = new Date();
+      const callsWithTimers = (calls || []).map(call => {
+        let timeRemaining = null;
+        if (call.expiresAt) {
+          const expiresAt = new Date(call.expiresAt);
+          timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+        }
+        return { ...call, timeRemaining };
+      }).filter(call => call.timeRemaining === null || call.timeRemaining > 0);
+      
+      setPendingCalls(callsWithTimers);
+      setIsLoading(false);
+    });
+
+    socket.on('incoming-call', (data) => {
+      console.log('📞 Incoming call:', data);
+      
+      // Check if already exists
       setPendingCalls(prev => {
         const exists = prev.find(call => call._id === data.callRequestId);
         if (exists) return prev;
         
-        return [...prev, {
+        // Calculate time remaining
+        let timeRemaining = 30; // Default 30 seconds
+        if (data.expiresAt) {
+          const expiresAt = new Date(data.expiresAt);
+          timeRemaining = Math.max(0, Math.floor((expiresAt - new Date()) / 1000));
+        }
+        
+        const newCall = {
           _id: data.callRequestId,
           callRequestId: data.callRequestId,
           userId: data.userId,
           user: data.user,
           status: 'pending',
-          requestedAt: data.requestedAt,
+          requestedAt: data.requestedAt || new Date(),
           expiresAt: data.expiresAt,
           roomName: data.roomName,
-          isFreeSession: data.isFreeSession
-        }];
-      });
-      
-      toast.info(`📞 Incoming call from ${data.user?.firstName || 'User'}`, {
-        duration: 30000,
-        action: {
-          label: 'Answer',
-          onClick: () => {
-            window.open(`/psychic/call/${data.callRequestId}`, '_blank');
+          isFreeSession: data.isFreeSession,
+          timeRemaining
+        };
+        
+        toast.info(`📞 Incoming call from ${data.user?.firstName || 'User'}`, {
+          duration: 30000,
+          action: {
+            label: 'Answer',
+            onClick: () => {
+              window.open(`/psychic/call/${data.callRequestId}`, '_blank');
+            }
           }
-        }
+        });
+        
+        return [...prev, newCall];
       });
-    });
-
-    socket.on('pending-calls', (calls) => {
-      console.log('📋 Received pending calls:', calls?.length || 0);
-      setPendingCalls(calls || []);
     });
 
     socket.on('call-token', (data) => {
       console.log('🔑 Call token received:', data);
       
-      setActiveCall(prev => ({
-        ...prev,
-        token: data.token,
-        roomName: data.roomName,
-        callSessionId: data.callSessionId,
-        status: 'accepted'
-      }));
+      setActiveCall({
+        ...data,
+        status: 'accepted',
+        acceptedAt: new Date()
+      });
       
-      toast.success('Call accepted! Getting ready...');
+      toast.success('Call accepted! Connecting...');
     });
 
     socket.on('timer-started', (data) => {
@@ -108,16 +135,47 @@ export const usePsychicCalls = () => {
         status: 'active',
         startTime: data.startTime
       }));
+    });
+
+    socket.on('timer-sync', (data) => {
+      console.log('⏱️ Timer sync:', data);
       
-      toast.success('Call connected!');
+      if (activeCall && activeCall.callSessionId === data.callSessionId) {
+        setActiveCall(prev => ({
+          ...prev,
+          elapsedSeconds: data.elapsedSeconds,
+          startTime: data.startTime
+        }));
+      }
     });
 
     socket.on('call-completed', (data) => {
       console.log('📞 Call completed:', data);
       
+      // Clear active call
       setActiveCall(null);
       
-      toast.info(`Call completed. Duration: ${data.duration || 0} seconds`);
+      // Remove from pending if present
+      if (data.callRequestId) {
+        setPendingCalls(prev => 
+          prev.filter(call => call._id !== data.callRequestId && call.callRequestId !== data.callRequestId)
+        );
+      }
+      
+      const endMessage = data.endReason === 'ended_by_user' 
+        ? 'User ended the call' 
+        : data.endReason === 'ended_by_psychic'
+        ? 'You ended the call'
+        : data.endReason === 'insufficient_credits'
+        ? 'Call ended - User has insufficient credits'
+        : data.endReason === 'expired'
+        ? 'Call request expired'
+        : 'Call completed';
+      
+      toast.info(endMessage);
+      
+      // Update psychic status
+      api.put('/api/psychic/status', { status: 'online' }).catch(console.error);
     });
 
     socket.on('call-cancelled', (data) => {
@@ -127,7 +185,31 @@ export const usePsychicCalls = () => {
         prev.filter(call => call._id !== data.callRequestId)
       );
       
+      setActiveCall(prev => {
+        if (prev && prev._id === data.callRequestId) {
+          return null;
+        }
+        return prev;
+      });
+      
       toast.info('Call cancelled by user');
+    });
+
+    socket.on('call-ended-insufficient-credits', (data) => {
+      console.log('💰 Call ended - insufficient credits:', data);
+      
+      setActiveCall(null);
+      toast.error('Call ended - User has insufficient credits');
+    });
+
+    socket.on('call-expired', (data) => {
+      console.log('⏰ Call expired:', data);
+      
+      setPendingCalls(prev => 
+        prev.filter(call => call._id !== data.callRequestId)
+      );
+      
+      toast.error('Call request expired');
     });
 
     socket.on('call-error', (error) => {
@@ -135,13 +217,12 @@ export const usePsychicCalls = () => {
       toast.error(error.message || 'Call error occurred');
     });
 
-    // Fetch initial pending calls
-    fetchPendingCalls();
-    
-    return () => {
-      audioSocketManager.disconnect();
-    };
-  }, [psychicId, psychicToken]);
+    socket.on('registration-success', (data) => {
+      console.log('✅ Registration success:', data);
+    });
+
+    return socket;
+  }, [psychicId, psychicToken, activeCall]);
 
   // Fetch pending calls from API
   const fetchPendingCalls = useCallback(async () => {
@@ -152,24 +233,67 @@ export const usePsychicCalls = () => {
       const response = await api.get('/api/calls/pending');
       
       if (response.data.success) {
-        console.log('📋 Fetched pending calls:', response.data.data?.length || 0);
-        setPendingCalls(response.data.data || []);
-      } else {
-        console.error('Failed to fetch pending calls:', response.data.message);
+        const calls = response.data.data || [];
+        
+        // Add time remaining
+        const now = new Date();
+        const callsWithTimers = calls.map(call => {
+          let timeRemaining = null;
+          if (call.expiresAt) {
+            const expiresAt = new Date(call.expiresAt);
+            timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+          }
+          return { ...call, timeRemaining };
+        }).filter(call => call.timeRemaining === null || call.timeRemaining > 0);
+        
+        setPendingCalls(callsWithTimers);
       }
     } catch (error) {
       console.error('Error fetching pending calls:', error);
-      // Don't show toast, it's okay if it fails initially
     } finally {
       setIsLoading(false);
     }
   }, [psychicId, api]);
 
+  // Refresh timers for pending calls
+  const refreshPendingCallTimers = useCallback(async () => {
+    if (!psychicId || pendingCalls.length === 0) return;
+    
+    try {
+      const response = await api.get('/api/calls/pending');
+      
+      if (response.data.success) {
+        const serverCalls = response.data.data || [];
+        const serverCallMap = new Map(serverCalls.map(c => [c._id, c]));
+        
+        setPendingCalls(prev => 
+          prev.map(call => {
+            const serverCall = serverCallMap.get(call._id);
+            if (serverCall && serverCall.expiresAt) {
+              const expiresAt = new Date(serverCall.expiresAt);
+              const timeRemaining = Math.max(0, Math.floor((expiresAt - new Date()) / 1000));
+              
+              // Remove if expired
+              if (timeRemaining <= 0) {
+                return null;
+              }
+              
+              return { ...call, timeRemaining };
+            }
+            return call;
+          }).filter(Boolean)
+        );
+      }
+    } catch (error) {
+      console.error('Error refreshing timers:', error);
+    }
+  }, [psychicId, pendingCalls.length, api]);
+
   // Accept call
   const acceptCall = useCallback(async (callRequestId) => {
     if (!socketRef.current?.connected) {
       toast.error('Not connected to audio server');
-      return;
+      return false;
     }
 
     try {
@@ -178,7 +302,14 @@ export const usePsychicCalls = () => {
       const callRequest = pendingCalls.find(call => call._id === callRequestId);
       if (!callRequest) {
         toast.error('Call request not found');
-        return;
+        return false;
+      }
+
+      // Check if expired
+      if (callRequest.timeRemaining !== null && callRequest.timeRemaining <= 0) {
+        toast.error('Call request has expired');
+        refreshPendingCallTimers();
+        return false;
       }
 
       // Emit accept event
@@ -187,29 +318,18 @@ export const usePsychicCalls = () => {
         roomName: callRequest.roomName
       });
 
-      // Move from pending to active
+      // Remove from pending
       setPendingCalls(prev => prev.filter(call => call._id !== callRequestId));
       
-      setActiveCall({
-        ...callRequest,
-        status: 'accepted',
-        acceptedAt: new Date()
-      });
-
-      // Update psychic status to busy
-      try {
-        await api.put('/api/psychic/status', { status: 'busy' });
-      } catch (error) {
-        console.error('Error updating psychic status:', error);
-      }
-      
-      toast.success('Call accepted! Getting ready...');
+      toast.success('Accepting call...');
+      return true;
       
     } catch (error) {
       console.error('Error accepting call:', error);
       toast.error(error.message || 'Failed to accept call');
+      return false;
     }
-  }, [pendingCalls, api]);
+  }, [pendingCalls, refreshPendingCallTimers]);
 
   // Reject call
   const rejectCall = useCallback(async (callRequestId, reason = 'Not available') => {
@@ -219,15 +339,12 @@ export const usePsychicCalls = () => {
     }
 
     try {
-      console.log('❌ Rejecting call:', callRequestId);
-      
       socketRef.current.emit('reject-call', {
         callRequestId,
         reason
       });
 
       setPendingCalls(prev => prev.filter(call => call._id !== callRequestId));
-      
       toast.info('Call rejected');
       
     } catch (error) {
@@ -244,19 +361,27 @@ export const usePsychicCalls = () => {
     }
 
     try {
-      console.log('🛑 Ending call:', activeCall.callSessionId);
+      const callSessionId = activeCall.callSessionId || activeCall._id;
+      
+      if (!callSessionId) {
+        toast.error('No call session ID');
+        return;
+      }
+
+      console.log('🛑 Ending call:', callSessionId);
       
       socketRef.current.emit('call-ended', {
-        callSessionId: activeCall.callSessionId,
+        callSessionId,
         endReason
       });
 
       setActiveCall(null);
       
+      // Update psychic status
       try {
         await api.put('/api/psychic/status', { status: 'online' });
       } catch (error) {
-        console.error('Error updating psychic status:', error);
+        console.error('Error updating status:', error);
       }
       
       toast.info('Call ended');
@@ -267,30 +392,11 @@ export const usePsychicCalls = () => {
     }
   }, [activeCall, api]);
 
-  // Cancel call
-  const cancelCall = useCallback(async (callRequestId) => {
-    if (!socketRef.current?.connected) {
-      toast.error('Not connected to server');
-      return;
+  // Sync timer with server
+  const syncTimer = useCallback((callSessionId) => {
+    if (socketRef.current?.connected && callSessionId) {
+      socketRef.current.emit('sync-timer', { callSessionId });
     }
-
-    try {
-      socketRef.current.emit('cancel-call', { callRequestId });
-      
-      setPendingCalls(prev => prev.filter(call => call._id !== callRequestId));
-      
-      toast.info('Call cancelled');
-      
-    } catch (error) {
-      console.error('Error cancelling call:', error);
-      toast.error('Failed to cancel call');
-    }
-  }, []);
-
-  // Check if call is expired
-  const isCallExpired = useCallback((expiresAt) => {
-    if (!expiresAt) return true;
-    return new Date(expiresAt) < new Date();
   }, []);
 
   // Get time remaining for call request
@@ -301,22 +407,91 @@ export const usePsychicCalls = () => {
     return Math.max(0, Math.floor((expires - now) / 1000));
   }, []);
 
+  // Format time for display
+  const formatTimeRemaining = useCallback((seconds) => {
+    if (!seconds && seconds !== 0) return '--:--';
+    if (seconds <= 0) return 'Expired';
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
   // Initialize on mount
   useEffect(() => {
     if (psychicId && psychicToken) {
       console.log('🔧 Initializing psychic calls...');
       initializeSocket();
+      fetchPendingCalls();
     } else {
-      console.log('❌ Missing psychic ID or token');
+      console.log('❌ Missing psychic credentials');
+      setIsLoading(false);
     }
 
     return () => {
       audioSocketManager.disconnect();
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      if (pendingCallTimerRef.current) {
+        clearInterval(pendingCallTimerRef.current);
+      }
+      Object.values(timerRef.current).forEach(clearInterval);
+    };
+  }, [initializeSocket, fetchPendingCalls, psychicId, psychicToken]);
+
+  // Poll for pending call updates every 5 seconds
+  useEffect(() => {
+    if (psychicId && socketConnected) {
+      pollIntervalRef.current = setInterval(refreshPendingCallTimers, 5000);
+      
+      return () => {
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+        }
+      };
+    }
+  }, [psychicId, socketConnected, refreshPendingCallTimers]);
+
+  // Update local timers for pending calls every second
+  useEffect(() => {
+    if (pendingCalls.length === 0) return;
+    
+    pendingCallTimerRef.current = setInterval(() => {
+      setPendingCalls(prev => 
+        prev.map(call => {
+          if (call.expiresAt) {
+            const expiresAt = new Date(call.expiresAt);
+            const timeRemaining = Math.max(0, Math.floor((expiresAt - new Date()) / 1000));
+            
+            if (timeRemaining <= 0) {
+              // Remove expired call
+              return null;
+            }
+            
+            return { ...call, timeRemaining };
+          }
+          return call;
+        }).filter(Boolean)
+      );
+    }, 1000);
+    
+    return () => {
+      if (pendingCallTimerRef.current) {
+        clearInterval(pendingCallTimerRef.current);
       }
     };
-  }, [initializeSocket, psychicId, psychicToken]);
+  }, [pendingCalls.length]);
+
+  // Timer sync for active call
+  useEffect(() => {
+    if (activeCall?.status === 'active' && activeCall.callSessionId) {
+      const syncInterval = setInterval(() => {
+        syncTimer(activeCall.callSessionId);
+      }, 3000);
+      
+      return () => clearInterval(syncInterval);
+    }
+  }, [activeCall?.status, activeCall?.callSessionId, syncTimer]);
 
   return {
     pendingCalls,
@@ -325,12 +500,13 @@ export const usePsychicCalls = () => {
     socketConnected,
     isLoading,
     fetchPendingCalls,
+    refreshPendingCallTimers,
     acceptCall,
     rejectCall,
     endCall,
-    cancelCall,
-    isCallExpired,
+    syncTimer,
     getTimeRemaining,
+    formatTimeRemaining,
     initializeSocket
   };
 };

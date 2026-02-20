@@ -1,4 +1,4 @@
-// src/context/PsychicAuthContext.jsx - FIXED VERSION
+// src/context/PsychicAuthContext.jsx - UPDATED WITH CATEGORY
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import axios from "axios";
@@ -45,6 +45,7 @@ export const PsychicAuthProvider = ({ children }) => {
     localStorage.removeItem('psychicData');
     localStorage.removeItem('psychicId');
     localStorage.removeItem('psychicName');
+    localStorage.removeItem('psychicCategory'); // Add this
     setPsychic(null);
     setError("");
   };
@@ -81,6 +82,10 @@ export const PsychicAuthProvider = ({ children }) => {
         }
         if (psychicData.name) {
           localStorage.setItem('psychicName', psychicData.name);
+        }
+        // Store category if available
+        if (psychicData.category) {
+          localStorage.setItem('psychicCategory', psychicData.category);
         }
       } else {
         throw new Error(response.data.message || 'Invalid response');
@@ -169,8 +174,13 @@ export const PsychicAuthProvider = ({ children }) => {
           if (psychicInfo.name) {
             localStorage.setItem('psychicName', psychicInfo.name);
           }
+          // Store category if available
+          if (psychicInfo.category) {
+            localStorage.setItem('psychicCategory', psychicInfo.category);
+          }
           
           console.log("✅ Psychic data stored:", psychicInfo._id);
+          console.log("✅ Psychic category:", psychicInfo.category || "Not set");
         }
         
         toast.success(`Welcome back, ${psychicInfo?.name || "Psychic"}!`);
@@ -215,15 +225,38 @@ export const PsychicAuthProvider = ({ children }) => {
     }
   };
 
-  // Register function
+  // Register function - UPDATED to properly handle category
   const register = async (formData) => {
     setLoading(true);
     setError("");
 
     try {
+      console.log("📝 Registering new psychic with data:", {
+        name: formData.name,
+        email: formData.email,
+        ratePerMin: formData.ratePerMin,
+        gender: formData.gender,
+        category: formData.category, // Log category
+        hasImage: !!formData.image
+      });
+
+      // Validate category is present
+      if (!formData.category) {
+        throw new Error("Category is required");
+      }
+
       const response = await axios.post(
         `${import.meta.env.VITE_BASE_URL || 'http://localhost:5001'}/api/human-psychics/register`,
-        formData,
+        {
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          ratePerMin: parseFloat(formData.ratePerMin),
+          bio: formData.bio,
+          gender: formData.gender,
+          category: formData.category, // Explicitly include category
+          image: formData.image || ''
+        },
         {
           timeout: 10000,
           headers: {
@@ -232,14 +265,32 @@ export const PsychicAuthProvider = ({ children }) => {
         }
       );
       
+      console.log("✅ Registration response:", response.data);
+      
       if (response.data.success) {
         toast.success("Registration successful! You can now login.");
-        return { success: true, data: response.data };
+        
+        // If token is returned, store it (optional)
+        if (response.data.token) {
+          localStorage.setItem('psychicToken', response.data.token);
+        }
+        
+        // Store basic info if returned
+        if (response.data._id) {
+          localStorage.setItem('psychicId', response.data._id);
+        }
+        
+        return { 
+          success: true, 
+          data: response.data 
+        };
       } else {
         throw new Error(response.data.message || 'Registration failed');
       }
     } catch (error) {
       const message = error.response?.data?.message || error.message || 'Registration failed';
+      console.error("❌ Registration error:", message);
+      console.error("Error details:", error.response?.data || error);
       setError(message);
       toast.error(message);
       return { success: false, message };
@@ -248,7 +299,7 @@ export const PsychicAuthProvider = ({ children }) => {
     }
   };
 
-  // Update profile
+  // Update profile - UPDATED to handle category updates
   const updateProfile = async (profileData) => {
     try {
       const response = await psychicApi.put('/api/human-psychics/profile/me', profileData);
@@ -256,6 +307,12 @@ export const PsychicAuthProvider = ({ children }) => {
       if (response.data.success) {
         const updatedPsychic = response.data.psychic || response.data.data;
         localStorage.setItem('psychicData', JSON.stringify(updatedPsychic));
+        
+        // Update category in localStorage if it was updated
+        if (updatedPsychic.category) {
+          localStorage.setItem('psychicCategory', updatedPsychic.category);
+        }
+        
         setPsychic(updatedPsychic);
         toast.success("Profile updated successfully!");
         return { success: true, data: updatedPsychic };
@@ -269,13 +326,25 @@ export const PsychicAuthProvider = ({ children }) => {
     }
   };
 
+  // Get psychic category helper
+  const getPsychicCategory = () => {
+    if (psychic?.category) {
+      return psychic.category;
+    }
+    return localStorage.getItem('psychicCategory') || null;
+  };
+
   // Verify if psychic is authenticated
   const isAuthenticated = !!psychic && !!localStorage.getItem('psychicToken');
 
   console.log("🔄 PsychicAuthContext state:", {
     loading,
     initialCheckDone,
-    psychic: psychic ? { _id: psychic._id, name: psychic.name } : null,
+    psychic: psychic ? { 
+      _id: psychic._id, 
+      name: psychic.name,
+      category: psychic.category // Log category
+    } : null,
     hasToken: !!localStorage.getItem('psychicToken'),
     isAuthenticated
   });
@@ -292,7 +361,8 @@ export const PsychicAuthProvider = ({ children }) => {
         error,
         isAuthenticated,
         initialCheckDone,
-        checkAuthStatus
+        checkAuthStatus,
+        getPsychicCategory // Add helper function
       }}
     >
       {children}

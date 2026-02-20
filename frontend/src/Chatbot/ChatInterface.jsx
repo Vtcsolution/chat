@@ -125,8 +125,10 @@ const CreditProgressBar = ({ currentCredits, ratePerMin }) => {
         </span>
       </div>
       <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+
+        
         <div
-          className="h-full bg-gradient-to-r from-blue-500 to-purple-500 transition-all duration-300 ease-out"
+          className="h-full bg-gradient-to-r from-amber-500 to-amber-800 transition-all duration-300 ease-out"
           style={{ width: `${Math.min(percentage, 100)}%` }}
         />
       </div>
@@ -353,102 +355,103 @@ const AcceptSessionModal = ({
   };
   return (
     <Dialog open={showAcceptModal} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            {isRinging && (
-              <div className="animate-pulse">
-                <Sparkles className="h-5 w-5 text-green-600" />
-              </div>
-            )}
-            Start Paid Session?
-            {isRinging && (
-              <span className="text-sm font-normal text-green-600 animate-pulse ml-2">
-                Ringing...
-              </span>
-            )}
-          </DialogTitle>
-          <DialogDescription>
-            <div className="flex items-center gap-2 mt-2">
-              <Avatar className="h-8 w-8">
-                <AvatarImage src={selectedPsychic?.image} />
-                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white">
-                  {selectedPsychic?.name?.[0] || "P"}
-                </AvatarFallback>
-              </Avatar>
-              <span className="font-medium text-gray-800">
-                {selectedPsychic.name} heeft je chatverzoek geaccepteerd.
-              </span>
-            </div>
-            <p className="mt-2">
-Wil je nu de betaalde sessie starten? </p>
-          </DialogDescription>
-        </DialogHeader>
-        <div className="flex flex-col gap-4">
-          {/* Session Cost Info */}
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="flex items-center gap-2 mb-1">
-              <CreditCard className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium text-green-600">Sessiekosten</span>
-            </div>
-            <div className="text-lg font-bold text-green-700">
-              {ratePerMin} credits/min
-            </div>
-            <div className="text-xs text-green-600 mt-1 flex items-center gap-1">
-              <Zap className="h-3 w-3" />
-              Je credits: {Number(userCredits).toFixed(2)}
-            </div>
-            {userCredits > 0 && (
-              <div className="text-xs text-blue-600 mt-1">
-                Available time: {Math.floor(userCredits / ratePerMin)} minutes
-              </div>
-            )}
+  <DialogContent className="max-w-md">
+    <DialogHeader>
+      <DialogTitle className="flex items-center gap-2">
+        {isRinging && (
+          <div className="animate-pulse">
+            <Sparkles className="h-5 w-5 text-amber-500" />
           </div>
-          {/* Ringtone Status */}
-          {isRinging && (
-            <div className="p-2 bg-blue-50 border border-blue-200 rounded-lg animate-pulse">
-              <div className="flex items-center justify-center gap-2">
-                <Sparkles className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-600">
-                  Ringing... Please respond
-                </span>
-              </div>
-            </div>
-          )}
-          {/* Action Buttons */}
-          <div className="flex flex-col gap-3">
-            <Button
-              onClick={handleAccept}
-              className="w-full bg-green-600 hover:bg-green-700 text-white py-6 text-lg"
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                <span>Accepteren en sessie starten</span>
-                {userCredits > 0 && (
-                  <span className="ml-2 bg-white text-green-700 text-xs font-medium px-2 py-1 rounded">
-                    {Math.floor(userCredits / ratePerMin)}m
-                  </span>
-                )}
-              </div>
-            </Button>
-            <Button
-              onClick={handleDecline}
-              variant="outline"
-              className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 py-6"
-            >
-              <div className="flex items-center justify-center gap-2">
-                <Sparkles className="h-5 w-5" />
-                <span>Sessie weigeren</span>
-              </div>
-            </Button>
+        )}
+        Start Paid Session?
+        {isRinging && (
+          <span className="text-sm font-normal text-amber-600 animate-pulse ml-2">
+            Ringing...
+          </span>
+        )}
+      </DialogTitle>
+      <DialogDescription>
+        <div className="flex items-center gap-2 mt-2">
+          <Avatar className="h-8 w-8">
+            <AvatarImage src={selectedPsychic?.image} />
+            <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white">
+              {selectedPsychic?.name?.[0] || "P"}
+            </AvatarFallback>
+          </Avatar>
+          <span className="font-medium text-gray-800">
+            {selectedPsychic.name} has accepted your chat request.
+          </span>
+        </div>
+        <p className="mt-2">
+          Do you want to start the paid session now?
+        </p>
+      </DialogDescription>
+    </DialogHeader>
+    <div className="flex flex-col gap-4">
+      {/* Session Cost Info */}
+      <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="flex items-center gap-2 mb-1">
+          <CreditCard className="h-4 w-4 text-amber-600" />
+          <span className="text-sm font-medium text-amber-600">Session Cost</span>
+        </div>
+        <div className="text-lg font-bold text-amber-700">
+          {ratePerMin} credits/min
+        </div>
+        <div className="text-xs text-amber-600 mt-1 flex items-center gap-1">
+          <Zap className="h-3 w-3" />
+          Your credits: {Number(userCredits).toFixed(2)}
+        </div>
+        {userCredits > 0 && (
+          <div className="text-xs text-amber-700 mt-1 font-medium">
+            Available time: {Math.floor(userCredits / ratePerMin)} minutes
           </div>
-          {/* Additional Info */}
-          <div className="text-xs text-gray-500 text-center mt-2">
-            <p>Als je niet reageert, vervalt het verzoek na 1 minuut.</p>
+        )}
+      </div>
+      {/* Ringtone Status */}
+      {isRinging && (
+        <div className="p-2 bg-amber-50 border border-amber-200 rounded-lg animate-pulse">
+          <div className="flex items-center justify-center gap-2">
+            <Sparkles className="h-4 w-4 text-amber-600" />
+            <span className="text-sm font-medium text-amber-600">
+              Ringing... Please respond
+            </span>
           </div>
         </div>
-      </DialogContent>
-    </Dialog>
+      )}
+      {/* Action Buttons */}
+      <div className="flex flex-col gap-3">
+        <Button
+          onClick={handleAccept}
+          className="w-full bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white py-6 text-lg"
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            <span>Accept and start session</span>
+            {userCredits > 0 && (
+              <span className="ml-2 bg-white text-amber-700 text-xs font-medium px-2 py-1 rounded">
+                {Math.floor(userCredits / ratePerMin)}m
+              </span>
+            )}
+          </div>
+        </Button>
+        <Button
+          onClick={handleDecline}
+          variant="outline"
+          className="w-full border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 py-6"
+        >
+          <div className="flex items-center justify-center gap-2">
+            <Sparkles className="h-5 w-5" />
+            <span>Decline session</span>
+          </div>
+        </Button>
+      </div>
+      {/* Additional Info */}
+      <div className="text-xs text-gray-500 text-center mt-2">
+        <p>If you don't respond, the request will expire after 1 minute.</p>
+      </div>
+    </div>
+  </DialogContent>
+</Dialog>
   );
 };
 // Function to check if input contains only emoji
@@ -1977,7 +1980,7 @@ useEffect(() => {
                                 <Clock className="h-3 w-3" />
                                 Waiting for acceptance
                               </span>
-                            ) : session.lastMessage?.content || "Chat aanvragen"}
+                            ) : session.lastMessage?.content || "Start Chat"}
                           </p>
                           {session.unreadCounts?.user > 0 && (
                             <span className="bg-[#00a884] text-white text-xs font-medium rounded-full h-5 w-5 flex items-center justify-center">
@@ -2036,7 +2039,7 @@ useEffect(() => {
                           {onlineStatus[selectedPsychic?._id] ? (
                             <span className="text-green-600">Online</span>
                           ) : (
-                            `Laatst gezien ${formatTime(selectedSession.lastMessageAt)}`
+                            `Last Scene ${formatTime(selectedSession.lastMessageAt)}`
                           )}
                         </p>
                       </div>
@@ -2178,15 +2181,14 @@ useEffect(() => {
                       ) : (
                         // Request Chat Button - Responsive
                         <Button
-                          onClick={() => setShowRequestModal(true)}
-                          disabled={userCredits < ratePerMin}
-                          className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-xs md:text-sm"
-                          size="sm"
-                        >
+  onClick={() => setShowRequestModal(true)}
+  disabled={userCredits < ratePerMin}
+  className="bg-gradient-to-r from-yellow-700 to-amber-600 hover:from-yellow-600 hover:to-amber-700 text-xs md:text-sm"
+  size="sm"
+>
                           <Sparkles className="mr-1 md:mr-2 h-3 w-3" />
-                          Chat aanvragen
-                          {allowedMinutes > 0 && (
-                            <span className="ml-1 md:ml-2 bg-white text-purple-700 text-xs font-medium px-1 py-0.5 rounded">
+                          Start Chat                          {allowedMinutes > 0 && (
+                            <span className="ml-1 md:ml-2 bg-white text-amber-700 text-xs font-medium px-1 py-0.5 rounded">
                               {allowedMinutes}m
                             </span>
                           )}

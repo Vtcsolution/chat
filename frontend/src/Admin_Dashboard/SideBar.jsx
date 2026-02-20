@@ -9,15 +9,16 @@ import {
   User,
   Video,
   LogOut,
-  ChevronRight,
-  Users,           // ← changed from Fence to more appropriate icon
+  Users,           
+  UserPlus,        // ← added for Add Psychic
+  UserCheck,       // ← added for All Psychics
+  UserCog,         // ← added for New Psychics
 } from 'lucide-react';
 import { MdOutlineAttachEmail } from "react-icons/md";
 
 const Doctor_Side_Bar = ({ side }) => {
   const location = useLocation();
   const [activeItem, setActiveItem] = useState("dashboard");
-  const [openSubmenu, setOpenSubmenu] = useState(null);
 
   // Color scheme
   const colors = {
@@ -31,50 +32,37 @@ const Doctor_Side_Bar = ({ side }) => {
     danger: "#EF4444",
   };
 
-  // Determine active item & open submenu based on current path
+  // Determine active item based on current path
   useEffect(() => {
     const path = location.pathname;
 
-    // Psychics section (parent + all children)
-    if (
-      path.includes('/admin/dashboard/add-humancoach') ||
-      path.includes('/admin/dashboard/humancoach') ||
-      path.includes('/admin/dashboard/newcoach')
-    ) {
-      setActiveItem('psychics');
-      setOpenSubmenu('psychics'); // ← auto-open submenu when on child route
+    // Individual psychic pages (no dropdown now)
+    if (path.includes('/admin/dashboard/add-humancoach')) {
+      setActiveItem('add-psychic');
+    }
+    else if (path.includes('/admin/dashboard/humancoach')) {
+      setActiveItem('all-psychics');
+    }
+    else if (path.includes('/admin/dashboard/newcoach')) {
+      setActiveItem('new-psychics');
     }
     else if (path.includes('/admin/dashboard/transactions')) {
       setActiveItem('transactions');
-      setOpenSubmenu(null);
     }
     else if (path.includes('/admin/dashboard/human-chat')) {
       setActiveItem('human-chats');
-      setOpenSubmenu(null);
     }
     else if (path.includes('/admin/dashboard/allusers')) {
       setActiveItem('users');
-      setOpenSubmenu(null);
-    }
-    else if (path.includes('/admin/dashboard/reviews')) {
-      setActiveItem('reviews');
-      setOpenSubmenu(null);
     }
     else if (path.includes('/admin/dashboard/human-reviews')) {
       setActiveItem('coach-reviews');
-      setOpenSubmenu(null);
-    }
-    else if (path.includes('/admin/dashboard/video_update')) {
-      setActiveItem('video-thumbnail');
-      setOpenSubmenu(null);
     }
     else if (path.includes('/admin/dashboard/sendmail')) {
       setActiveItem('send-email');
-      setOpenSubmenu(null);
     }
     else if (path.includes('/admin/dashboard')) {
       setActiveItem('dashboard');
-      setOpenSubmenu(null);
     }
   }, [location.pathname]);
 
@@ -84,73 +72,67 @@ const Doctor_Side_Bar = ({ side }) => {
       label: 'Dashboard',
       icon: <LayoutDashboard className="h-5 w-5" />,
       path: '/admin/dashboard',
-      hasSubmenu: false
+    },
+    // Psychics - separate pages instead of dropdown
+    {
+      id: 'add-psychic',
+      label: 'Add Psychic',
+      icon: <UserPlus className="h-5 w-5" />,
+      path: '/admin/dashboard/add-humancoach',
     },
     {
-      id: 'psychics',
-      label: 'Psychics',
-      icon: <Users className="h-5 w-5" />, // more professional than Fence
-      path: null,
-      hasSubmenu: true,
-      submenu: [
-        { label: 'Add Human Psychic', path: '/admin/dashboard/add-humancoach' },
-        { label: 'All Psychics',       path: '/admin/dashboard/humancoach' },
-        { label: 'New Psychics',       path: '/admin/dashboard/newcoach' },
-      ]
+      id: 'all-psychics',
+      label: 'All Psychics',
+      icon: <UserCheck className="h-5 w-5" />,
+      path: '/admin/dashboard/humancoach',
+    },
+    {
+      id: 'new-psychics',
+      label: 'New Psychics',
+      icon: <UserCog className="h-5 w-5" />,
+      path: '/admin/dashboard/newcoach',
     },
     {
       id: 'transactions',
       label: 'Transactions',
       icon: <BadgeDollarSign className="h-5 w-5" />,
       path: '/admin/dashboard/transactions',
-      hasSubmenu: false
     },
     {
       id: 'human-chats',
-      label: 'Human Chats',
+      label: 'Chat / Calls',
       icon: <MessageCircle className="h-5 w-5" />,
       path: '/admin/dashboard/human-chat',
-      hasSubmenu: false
     },
     {
       id: 'users',
       label: 'Users',
       icon: <User className="h-5 w-5" />,
       path: '/admin/dashboard/allusers',
-      hasSubmenu: false
-    },
-    {
-      id: 'reviews',
-      label: 'Reviews',
-      icon: <Star className="h-5 w-5" />,
-      path: '/admin/dashboard/reviews',
-      hasSubmenu: false
     },
     {
       id: 'coach-reviews',
       label: 'Psychic Reviews',
       icon: <Star className="h-5 w-5" />,
       path: '/admin/dashboard/human-reviews',
-      hasSubmenu: false
     },
     {
       id: 'send-email',
       label: 'Send Email',
       icon: <MdOutlineAttachEmail className="h-5 w-5" />,
       path: '/admin/dashboard/sendmail',
-      hasSubmenu: false
     },
   ];
 
-  const toggleSubmenu = (id) => {
-    setOpenSubmenu(prev => (prev === id ? null : id));
-  };
-
-  const isActive = (item) => {
-    if (item.hasSubmenu) {
-      return activeItem === item.id;
+  const handleLogout = () => {
+    if (window.confirm("Are you sure you want to logout?")) {
+      // Clear any stored auth tokens/session
+      localStorage.removeItem('adminToken');
+      sessionStorage.clear();
+      
+      // Redirect to login page
+      window.location.href = '/admin/login';
     }
-    return activeItem === item.id;
   };
 
   return (
@@ -169,98 +151,33 @@ const Doctor_Side_Bar = ({ side }) => {
           </div>
 
           {/* Navigation */}
-          <ul className="px-3 py-5 space-y-1.5 flex-1">
+          <ul className="px-3 py-5 space-y-1 flex-1">
             {navItems.map((item) => (
               <li key={item.id}>
-                {item.hasSubmenu ? (
-                  <>
-                    {/* Parent item - Psychics */}
-                    <div
-                      className={`flex items-center justify-between gap-3 p-3.5 rounded-xl cursor-pointer transition-all duration-200 ${
-                        isActive(item) || openSubmenu === item.id
-                          ? 'bg-white/10 shadow-md'
-                          : 'hover:bg-white/5'
-                      }`}
-                      style={{
-                        color: (isActive(item) || openSubmenu === item.id)
-                          ? colors.textLight
-                          : 'white',
-                      }}
-                      onClick={() => toggleSubmenu(item.id)}
-                    >
-                      <div className="flex items-center gap-3.5">
-                        <div
-                          className="p-2 rounded-lg"
-                          style={{
-                            backgroundColor:
-                              isActive(item) || openSubmenu === item.id
-                                ? colors.secondary + '30'
-                                : colors.bgLight + '60',
-                          }}
-                        >
-                          {item.icon}
-                        </div>
-                        <span className="font-medium text-[15px]">{item.label}</span>
-                      </div>
-                      <ChevronRight
-                        className={`h-5 w-5 transition-transform duration-300 ${
-                          openSubmenu === item.id ? 'rotate-90' : ''
-                        }`}
-                        style={{ opacity: 0.7 }}
-                      />
-                    </div>
-
-                    {/* Submenu - slides down smoothly */}
-                    <div
-                      className={`transition-all duration-300 ease-in-out overflow-hidden ${
-                        openSubmenu === item.id ? 'max-h-64 opacity-100 mt-1' : 'max-h-0 opacity-0'
-                      }`}
-                    >
-                      <ul className="pl-12 py-2 space-y-1 border-l border-white/10 ml-4">
-                        {item.submenu.map((sub, idx) => (
-                          <li key={idx}>
-                            <Link
-                              to={sub.path}
-                              className={`block px-4 py-2.5 rounded-lg text-sm transition-all ${
-                                location.pathname === sub.path
-                                  ? 'bg-white/10 text-white font-medium'
-                                  : 'text-gray-300 hover:bg-white/5 hover:text-white'
-                              }`}
-                            >
-                              {sub.label}
-                            </Link>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </>
-                ) : (
-                  /* Regular menu item */
-                  <Link
-                    to={item.path}
-                    className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 ${
-                      isActive(item)
-                        ? 'bg-white/10 shadow-md scale-[1.02]'
-                        : 'hover:bg-white/5'
-                    }`}
+                <Link
+                  to={item.path}
+                  className={`flex items-center gap-3.5 p-3.5 rounded-xl transition-all duration-200 ${
+                    activeItem === item.id
+                      ? 'bg-white/10 shadow-md scale-[1.02]'
+                      : 'hover:bg-white/5'
+                  }`}
+                  style={{
+                    color: activeItem === item.id ? colors.textLight : 'white',
+                  }}
+                  onClick={() => setActiveItem(item.id)}
+                >
+                  <div
+                    className="p-2 rounded-lg"
                     style={{
-                      color: isActive(item) ? colors.textLight : 'white',
+                      backgroundColor: activeItem === item.id
+                        ? colors.secondary + '30'
+                        : colors.bgLight + '60',
                     }}
-                    onClick={() => setActiveItem(item.id)}
                   >
-                    <div
-                      className="p-2 rounded-lg"
-                      style={{
-                        backgroundColor: isActive(item)
-                          ? colors.secondary + '30'
-                          : colors.bgLight + '60',
-                      }}
-                    >
-                      {item.icon}
-                    </div>
-                    <span className="font-medium text-[15px]">{item.label}</span>
-                  </Link>
-                )}
+                    {item.icon}
+                  </div>
+                  <span className="font-medium text-[15px]">{item.label}</span>
+                </Link>
               </li>
             ))}
           </ul>
@@ -270,13 +187,7 @@ const Doctor_Side_Bar = ({ side }) => {
             <div
               className="flex items-center gap-3.5 p-3.5 rounded-xl cursor-pointer hover:bg-white/5 transition-all"
               style={{ color: colors.danger }}
-              onClick={() => {
-                if (window.confirm("Are you sure you want to logout?")) {
-                  // logout logic here
-                  // logout();
-                  // navigate('/admin/login');
-                }
-              }}
+              onClick={handleLogout}
             >
               <div className="p-2 rounded-lg" style={{ backgroundColor: colors.danger + '20' }}>
                 <LogOut className="h-5 w-5" />

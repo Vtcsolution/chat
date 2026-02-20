@@ -75,81 +75,12 @@ const Dashboard = () => {
           </Card>
 
           {/* Main Content - Same layout structure */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
             <div className="lg:col-span-2 space-y-6">
               <DashboardAccordions />
             </div>
             
-            {/* Sidebar Stats Cards - Same design pattern */}
-            <div className="space-y-6">
-              {/* Stats Card 1 */}
-              <Card className="shadow-md rounded-xl border-0 overflow-hidden">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-lg" style={{ color: colors.deepPurple }}>Active Sessions</h3>
-                      <p className="text-3xl font-bold mt-2" style={{ color: colors.deepPurple }}>12</p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                      <span className="text-xl" style={{ color: colors.antiqueGold }}>📅</span>
-                    </div>
-                  </div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Current coaching engagements</p>
-                </CardContent>
-              </Card>
-              
-              {/* Stats Card 2 */}
-              <Card className="shadow-md rounded-xl border-0 overflow-hidden">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-lg" style={{ color: colors.deepPurple }}>Top Coach</h3>
-                      <p className="text-lg font-bold mt-2" style={{ color: colors.deepPurple }}>Coach Alex</p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                      <span className="text-xl" style={{ color: colors.antiqueGold }}>👨‍🏫</span>
-                    </div>
-                  </div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Your preferred coach</p>
-                </CardContent>
-              </Card>
-              
-              {/* Stats Card 3 */}
-              <Card className="shadow-md rounded-xl border-0 overflow-hidden">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-lg" style={{ color: colors.deepPurple }}>Progress Rate</h3>
-                      <p className="text-3xl font-bold mt-2" style={{ color: colors.deepPurple }}>85%</p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                      <span className="text-xl" style={{ color: colors.antiqueGold }}>📈</span>
-                    </div>
-                  </div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Based on your milestones</p>
-                </CardContent>
-              </Card>
-              
-              {/* Stats Card 4 - Additional card for balance */}
-              <Card className="shadow-md rounded-xl border-0 overflow-hidden">
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="font-bold text-lg" style={{ color: colors.deepPurple }}>Goals Achieved</h3>
-                      <p className="text-3xl font-bold mt-2" style={{ color: colors.deepPurple }}>7/10</p>
-                    </div>
-                    <div className="w-12 h-12 rounded-full flex items-center justify-center"
-                      style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                      <span className="text-xl" style={{ color: colors.antiqueGold }}>🏆</span>
-                    </div>
-                  </div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Quarterly goals completed</p>
-                </CardContent>
-              </Card>
-            </div>
+           
           </div>
 
           {/* Additional Features Section - Matching design */}

@@ -18,7 +18,12 @@ import {
   Crown,
   Target,
   Zap,
-  CheckCircle
+  CheckCircle,
+  PhoneCall,
+  Headphones,
+  Phone,
+  Calendar,
+  Star
 } from "lucide-react";
 import {
   Card,
@@ -43,6 +48,7 @@ import Dashboard_Navbar from "../Admin_Navbar";
 import Doctor_Side_Bar from "../SideBar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import axios from 'axios';
+import { Avatar, AvatarFallback } from "@radix-ui/react-avatar";
 
 // Color scheme matching psychic dashboard
 const colors = {
@@ -56,6 +62,8 @@ const colors = {
   danger: "#EF4444",       // Red
   background: "#F5F3EB",   // Soft ivory
   chartLine: "#0ea5e9",    // Sky blue for charts
+  call: "#3B82F6",         // Blue for calls
+  chat: "#10B981",         // Green for chats
 };
 
 const AdminHumanChatDashboard = () => {
@@ -74,22 +82,36 @@ const AdminHumanChatDashboard = () => {
       sessions: 0,
       paidTimers: 0,
       chatRequests: 0,
-      users: 0
+      users: 0,
+      callSessions: 0
     },
     currentStatus: {
       activeSessions: 0,
       activePaidTimers: 0,
-      pendingRequests: 0
+      pendingRequests: 0,
+      activeCallSessions: 0,
+      completedCallSessions: 0
     },
     financials: {
       totalRevenue: 0,
       totalPaidTime: 0,
-      avgSessionValue: 0
+      avgSessionValue: 0,
+      totalCallRevenue: 0,
+      averageCallValue: 0,
+      totalCallMinutes: 0
+    },
+    callStatistics: {
+      totalSessions: 0,
+      activeSessions: 0,
+      completedSessions: 0,
+      totalCreditsUsed: 0,
+      averageCallDuration: 0
     },
     lists: {
       psychics: [],
       recentPaidTimers: [],
-      recentSessions: []
+      recentSessions: [],
+      recentCallSessions: []
     }
   });
 
@@ -120,6 +142,7 @@ const AdminHumanChatDashboard = () => {
           totals: {},
           currentStatus: {},
           financials: {},
+          callStatistics: {},
           lists: {}
         };
         
@@ -149,7 +172,7 @@ const AdminHumanChatDashboard = () => {
 
   const fetchMissingUserDetails = async (paidTimers) => {
     const missingUserTimers = paidTimers.filter(
-      timer => timer.user === 'Unknown User' || !timer.user || timer.user === 'User (Name Not Available)'
+      timer => timer.username === 'Unknown User' || !timer.username || timer.username === 'User (Name Not Available)'
     );
     
     if (missingUserTimers.length === 0) return;
@@ -261,6 +284,16 @@ const AdminHumanChatDashboard = () => {
     }
   };
 
+  const handleViewCallDetails = (callId) => {
+    // Navigate to call details page (create if needed)
+    console.log('View call:', callId);
+    toast({
+      title: "Call Details",
+      description: "Call details view coming soon",
+      variant: "default"
+    });
+  };
+
   const getUserDisplayName = (timer, isPaidTimer = false) => {
     const timerId = timer._id;
     
@@ -367,6 +400,21 @@ const AdminHumanChatDashboard = () => {
     }
   };
 
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return "N/A";
+    }
+  };
+
   const formatDuration = (seconds) => {
     if (!seconds || seconds === 0) return "0m";
     const hours = Math.floor(seconds / 3600);
@@ -376,6 +424,17 @@ const AdminHumanChatDashboard = () => {
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
+  };
+
+  const formatDurationMinutes = (minutes) => {
+    if (!minutes || minutes === 0) return "0m";
+    const hours = Math.floor(minutes / 60);
+    const mins = Math.floor(minutes % 60);
+    
+    if (hours > 0) {
+      return `${hours}h ${mins}m`;
+    }
+    return `${mins}m`;
   };
 
   const formatAmount = (amount) => {
@@ -405,11 +464,11 @@ const AdminHumanChatDashboard = () => {
               <div className="flex items-center gap-2 mb-1">
                 <Target className="h-6 w-6" style={{ color: colors.secondary }} />
                 <h1 className="text-2xl sm:text-3xl font-bold tracking-tight" style={{ color: colors.primary }}>
-                  Chat Management Dashboard
+                  Communication Management Dashboard
                 </h1>
               </div>
               <p className="text-muted-foreground mt-1" style={{ color: colors.primary + '80' }}>
-                Overview of all chat sessions, requests, and paid timers
+                Overview of all chat sessions, call sessions, and paid timers
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -430,44 +489,62 @@ const AdminHumanChatDashboard = () => {
           </div>
 
           {/* Main Statistics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             {/* Total Psychics Card */}
             <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium" style={{ color: colors.primary + '70' }}>Total Psychics</p>
-                    <p className="text-2xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.psychics || 0}</p>
-                    <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>Registered coaches</p>
+                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Psychics</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.psychics || 0}</p>
                   </div>
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center shadow-lg"
-                    style={{ 
-                      background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)`,
-                    }}
-                  >
-                    <Users className="h-6 w-6" style={{ color: colors.textLight }} />
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)` }}>
+                    <Users className="h-5 w-5" style={{ color: colors.textLight }} />
                   </div>
                 </div>
               </CardContent>
             </Card>
            
-            {/* Total Sessions Card */}
+            {/* Total Users Card */}
             <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium" style={{ color: colors.primary + '70' }}>Total Sessions</p>
-                    <p className="text-2xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.sessions || 0}</p>
-                    <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>Chat sessions</p>
+                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Users</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.users || 0}</p>
                   </div>
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center shadow-lg"
-                    style={{ 
-                      background: `linear-gradient(135deg, ${colors.success} 0%, ${colors.success}80 100%)`,
-                    }}
-                  >
-                    <MessageSquare className="h-6 w-6" style={{ color: 'white' }} />
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.success} 0%, ${colors.success}80 100%)` }}>
+                    <User className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+           
+            {/* Chat Sessions Card */}
+            <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Chat Sessions</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.sessions || 0}</p>
+                  </div>
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.chat} 0%, ${colors.chat}80 100%)` }}>
+                    <MessageSquare className="h-5 w-5 text-white" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+           
+            {/* Call Sessions Card */}
+            <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Call Sessions</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.callSessions || 0}</p>
+                  </div>
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.call} 0%, ${colors.call}80 100%)` }}>
+                    <PhoneCall className="h-5 w-5 text-white" />
                   </div>
                 </div>
               </CardContent>
@@ -475,41 +552,14 @@ const AdminHumanChatDashboard = () => {
            
             {/* Paid Timers Card */}
             <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium" style={{ color: colors.primary + '70' }}>Paid Timers</p>
-                    <p className="text-2xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.paidTimers || 0}</p>
-                    <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>Active timers</p>
+                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Paid Timers</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.paidTimers || 0}</p>
                   </div>
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center shadow-lg"
-                    style={{ 
-                      background: `linear-gradient(135deg, ${colors.warning} 0%, ${colors.secondary} 100%)`,
-                    }}
-                  >
-                    <Timer className="h-6 w-6" style={{ color: colors.primary }} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-           
-            {/* Chat Requests Card */}
-            <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium" style={{ color: colors.primary + '70' }}>Chat Requests</p>
-                    <p className="text-2xl font-bold mt-1" style={{ color: colors.primary }}>{dashboardData.totals.chatRequests || 0}</p>
-                    <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>Pending requests</p>
-                  </div>
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center shadow-lg"
-                    style={{ 
-                      background: `linear-gradient(135deg, ${colors.accent}80 0%, ${colors.primary} 100%)`,
-                    }}
-                  >
-                    <Activity className="h-6 w-6" style={{ color: colors.textLight }} />
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.warning} 0%, ${colors.secondary} 100%)` }}>
+                    <Timer className="h-5 w-5" style={{ color: colors.primary }} />
                   </div>
                 </div>
               </CardContent>
@@ -517,33 +567,129 @@ const AdminHumanChatDashboard = () => {
            
             {/* Total Revenue Card */}
             <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
-              <CardContent className="p-6">
+              <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium" style={{ color: colors.primary + '70' }}>Total Revenue</p>
-                    <p className="text-2xl font-bold mt-1" style={{ color: colors.primary }}>
-                      ${(dashboardData.financials.totalRevenue || 0).toFixed(2)}
+                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Total Revenue</p>
+                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>
+                      ${((dashboardData.financials.totalRevenue || 0) + (dashboardData.financials.totalCallRevenue || 0)).toFixed(2)}
                     </p>
-                    <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>All time earnings</p>
                   </div>
-                  <div 
-                    className="h-12 w-12 rounded-full flex items-center justify-center shadow-lg"
-                    style={{ 
-                      background: `linear-gradient(135deg, ${colors.secondary} 0%, ${colors.warning} 100%)`,
-                    }}
-                  >
-                    <DollarSign className="h-6 w-6" style={{ color: colors.primary }} />
+                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.secondary} 0%, ${colors.warning} 100%)` }}>
+                    <DollarSign className="h-5 w-5" style={{ color: colors.primary }} />
                   </div>
                 </div>
               </CardContent>
             </Card>
           </div>
 
+          {/* Status Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-green-100 flex items-center justify-center">
+                    <MessageSquare className="h-4 w-4 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Active Chats</p>
+                    <p className="text-lg font-bold">{dashboardData.currentStatus.activeSessions || 0}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-green-500/10 text-green-700">Live</Badge>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <PhoneCall className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Active Calls</p>
+                    <p className="text-lg font-bold">{dashboardData.currentStatus.activeCallSessions || 0}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-blue-500/10 text-blue-700">Live</Badge>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-yellow-100 flex items-center justify-center">
+                    <Timer className="h-4 w-4 text-yellow-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Active Timers</p>
+                    <p className="text-lg font-bold">{dashboardData.currentStatus.activePaidTimers || 0}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-yellow-500/10 text-yellow-700">Active</Badge>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-8 w-8 rounded-full bg-purple-100 flex items-center justify-center">
+                    <Activity className="h-4 w-4 text-purple-600" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Pending Requests</p>
+                    <p className="text-lg font-bold">{dashboardData.currentStatus.pendingRequests || 0}</p>
+                  </div>
+                </div>
+                <Badge variant="outline" className="bg-purple-500/10 text-purple-700">Pending</Badge>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Revenue Summary Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <MessageSquare className="h-4 w-4 text-green-600" />
+                  <span className="text-sm font-medium">Chat Revenue</span>
+                </div>
+                <p className="text-2xl font-bold text-green-600">{formatAmount(dashboardData.financials.totalRevenue || 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1">{dashboardData.financials.totalPaidTime || 0} hours paid</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <PhoneCall className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-medium">Call Revenue</span>
+                </div>
+                <p className="text-2xl font-bold text-blue-600">{formatAmount(dashboardData.financials.totalCallRevenue || 0)}</p>
+                <p className="text-xs text-muted-foreground mt-1">{dashboardData.financials.totalCallMinutes || 0} minutes</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="h-4 w-4 text-purple-600" />
+                  <span className="text-sm font-medium">Combined Total</span>
+                </div>
+                <p className="text-2xl font-bold text-purple-600">
+                  {formatAmount((dashboardData.financials.totalRevenue || 0) + (dashboardData.financials.totalCallRevenue || 0))}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">All time earnings</p>
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Tabs for different lists */}
           <Tabs defaultValue="recent-sessions" className="mb-6">
-            <TabsList className="grid grid-cols-3 w-full max-w-lg bg-transparent gap-2">
+            <TabsList className="grid grid-cols-4 w-full max-w-2xl bg-transparent gap-2">
+             
               <TabsTrigger 
-                value="recent-sessions"
+                value="recent-calls"
                 className="data-[state=active]:shadow-lg transition-all duration-200"
                 style={{
                   backgroundColor: 'transparent',
@@ -551,8 +697,8 @@ const AdminHumanChatDashboard = () => {
                   border: `1px solid ${colors.primary}20`,
                 }}
               >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                Recent Sessions
+                <PhoneCall className="h-4 w-4 mr-2" />
+                Call Sessions
               </TabsTrigger>
               <TabsTrigger 
                 value="recent-paid"
@@ -563,8 +709,8 @@ const AdminHumanChatDashboard = () => {
                   border: `1px solid ${colors.primary}20`,
                 }}
               >
-                <Timer className="h-4 w-4 mr-2" />
-                Paid Timers
+ <MessageSquare className="h-4 w-4 mr-2" />
+                 Chat Sessions
               </TabsTrigger>
               <TabsTrigger 
                 value="recent-psychics"
@@ -580,15 +726,10 @@ const AdminHumanChatDashboard = () => {
               </TabsTrigger>
             </TabsList>
 
-            {/* Recent Sessions Tab */}
+            {/* Recent Chat Sessions Tab */}
             <TabsContent value="recent-sessions">
-              <Card 
-                className="border-none shadow-lg"
-                style={{ 
-                  background: `linear-gradient(135deg, white 0%, ${colors.primary}03 100%)`,
-                }}
-              >
-                <CardHeader className="pb-3" style={{ borderBottomColor: colors.primary + '10' }}>
+              <Card className="border-none shadow-lg">
+                <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2" style={{ color: colors.primary }}>
                     <MessageSquare className="h-5 w-5" />
                     Recent Chat Sessions
@@ -598,134 +739,131 @@ const AdminHumanChatDashboard = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="rounded-lg overflow-hidden border" style={{ borderColor: colors.primary + '20' }}>
+                  <div className="rounded-lg overflow-hidden border">
                     <Table>
                       <TableHeader>
                         <TableRow style={{ backgroundColor: colors.primary + '05' }}>
-                          <TableHead style={{ color: colors.primary }}>User</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Psychic</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Status</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Duration</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Last Activity</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Chat Details</TableHead>
+                          <TableHead>User</TableHead>
+                          <TableHead>Psychic</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Duration</TableHead>
+                          <TableHead>Last Activity</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {loading ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-12">
-                              <div className="flex flex-col items-center justify-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.secondary }} />
-                                <span style={{ color: colors.primary + '70' }}>Loading sessions...</span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
                         ) : dashboardData.lists.recentSessions?.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-12" style={{ color: colors.primary + '70' }}>
-                              <div className="flex flex-col items-center gap-3">
-                                <MessageSquare className="h-12 w-12" style={{ color: colors.primary + '20' }} />
-                                <p className="font-medium">No recent sessions</p>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center py-8">No recent chat sessions</TableCell></TableRow>
                         ) : (
-                          dashboardData.lists.recentSessions?.map((session, index) => (
-                            <TableRow 
-                              key={session._id || index}
-                              style={{ 
-                                backgroundColor: index % 2 === 0 ? colors.primary + '02' : 'white',
-                              }}
-                            >
+                          dashboardData.lists.recentSessions?.slice(0, 5).map((session, index) => (
+                            <TableRow key={session._id || index}>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <div 
-                                    className="h-8 w-8 rounded-full flex items-center justify-center"
-                                    style={{ backgroundColor: colors.primary + '05' }}
-                                  >
-                                    <User className="h-4 w-4" style={{ color: colors.primary }} />
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-sm" style={{ color: colors.primary }}>
-                                      {getUserDisplayName(session, false)}
-                                    </p>
-                                    {typeof session.user === 'object' && session.user?.email && (
-                                      <p className="text-xs" style={{ color: colors.primary + '70' }}>
-                                        {session.user.email}
-                                      </p>
-                                    )}
-                                  </div>
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-green-100 text-green-600 text-xs">{session.user?.[0] || 'U'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{getUserDisplayName(session, false)}</span>
                                 </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <div 
-                                    className="h-8 w-8 rounded-full flex items-center justify-center"
-                                    style={{ backgroundColor: colors.accent + '10' }}
-                                  >
-                                    <User className="h-4 w-4" style={{ color: colors.accent }} />
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-sm" style={{ color: colors.primary }}>
-                                      {getPsychicDisplayName(session.psychic)}
-                                    </p>
-                                    {typeof session.psychic === 'object' && session.psychic?.email && (
-                                      <p className="text-xs" style={{ color: colors.primary + '70' }}>
-                                        {session.psychic.email}
-                                      </p>
-                                    )}
-                                  </div>
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-purple-100 text-purple-600 text-xs">{session.psychic?.[0] || 'P'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{getPsychicDisplayName(session.psychic)}</span>
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <Badge 
-                                  className="border font-medium"
-                                  style={{
-                                    backgroundColor: session.status === 'active' 
-                                      ? colors.success + '10'
-                                      : session.status === 'ended'
-                                      ? colors.accent + '10'
-                                      : colors.primary + '10',
-                                    color: session.status === 'active' 
-                                      ? colors.success
-                                      : session.status === 'ended'
-                                      ? colors.accent
-                                      : colors.primary,
-                                    borderColor: session.status === 'active' 
-                                      ? colors.success + '30'
-                                      : session.status === 'ended'
-                                      ? colors.accent + '30'
-                                      : colors.primary + '30',
-                                  }}
-                                >
-                                  {session.status}
-                                </Badge>
+                                <Badge className={
+                                  session.status === 'active' ? 'bg-green-500/10 text-green-700' : 
+                                  session.status === 'ended' ? 'bg-blue-500/10 text-blue-700' : 'bg-gray-500/10 text-gray-700'
+                                }>{session.status}</Badge>
+                              </TableCell>
+                              <TableCell>{formatDuration(session.duration)}</TableCell>
+                              <TableCell className="text-sm">{formatDate(session.lastMessageAt)}</TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => handleViewChatDetails(session._id)}>
+                                  <Eye className="h-3 w-3 mr-1" /> View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Recent Call Sessions Tab */}
+            <TabsContent value="recent-calls">
+              <Card className="border-none shadow-lg">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2" style={{ color: colors.primary }}>
+                    <PhoneCall className="h-5 w-5" />
+                    Recent Call Sessions
+                  </CardTitle>
+                  <CardDescription style={{ color: colors.primary + '70' }}>
+                    Latest audio call sessions (1 credit = $1)
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="rounded-lg overflow-hidden border">
+                    <Table>
+                      <TableHeader>
+                        <TableRow style={{ backgroundColor: colors.primary + '05' }}>
+                          <TableHead>User</TableHead>
+                          <TableHead>Psychic</TableHead>
+                          <TableHead>Revenue</TableHead>
+                          <TableHead>Duration</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Start Time</TableHead>
+                          <TableHead>Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {loading ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
+                        ) : dashboardData.lists.recentCallSessions?.length === 0 ? (
+                          <TableRow><TableCell colSpan={7} className="text-center py-8">No recent call sessions</TableCell></TableRow>
+                        ) : (
+                          dashboardData.lists.recentCallSessions?.slice(0, 5).map((call, index) => (
+                            <TableRow key={call._id || index}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-blue-100 text-blue-600 text-xs">{call.user?.[0] || 'U'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{call.user || 'Unknown'}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-purple-100 text-purple-600 text-xs">{call.psychic?.[0] || 'P'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{call.psychic || 'Unknown'}</span>
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
-                                  <Clock className="h-4 w-4" style={{ color: colors.secondary }} />
-                                  <span className="text-sm font-medium" style={{ color: colors.primary }}>
-                                    {formatDuration(session.duration)}
-                                  </span>
+                                  <DollarSign className="h-3 w-3 text-green-600" />
+                                  <span className="font-medium">{formatAmount(call.revenue || call.creditsUsed || 0)}</span>
                                 </div>
-                              </TableCell>
-                              <TableCell className="text-sm" style={{ color: colors.primary + '80' }}>
-                                {formatDate(session.lastMessageAt)}
+                                <span className="text-xs text-muted-foreground">{call.creditsUsed || 0} credits</span>
                               </TableCell>
                               <TableCell>
-                                <Button
-                                  variant="default"
-                                  size="sm"
-                                  onClick={() => handleViewChatDetails(session._id, false)}
-                                  disabled={loading}
-                                  className="hover:scale-105 transition-transform duration-200"
-                                  style={{
-                                    backgroundColor: colors.secondary,
-                                    color: colors.primary,
-                                  }}
-                                >
-                                  <ViewIcon className="h-4 w-4 mr-2" />
-                                  View
+                                <div className="flex items-center gap-1">
+                                  <Clock className="h-3 w-3 text-blue-600" />
+                                  <span className="text-sm">{formatDurationMinutes(call.duration)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <Badge className={
+                                  call.status === 'in-progress' ? 'bg-green-500/10 text-green-700' :
+                                  call.status === 'ended' ? 'bg-blue-500/10 text-blue-700' :
+                                  call.status === 'ringing' ? 'bg-yellow-500/10 text-yellow-700' : 'bg-gray-500/10 text-gray-700'
+                                }>{call.status}</Badge>
+                              </TableCell>
+                              <TableCell className="text-sm">{formatDateTime(call.startTime)}</TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => handleViewCallDetails(call._id)}>
+                                  <Eye className="h-3 w-3 mr-1" /> Details
                                 </Button>
                               </TableCell>
                             </TableRow>
@@ -740,13 +878,8 @@ const AdminHumanChatDashboard = () => {
 
             {/* Recent Paid Timers Tab */}
             <TabsContent value="recent-paid">
-              <Card 
-                className="border-none shadow-lg"
-                style={{ 
-                  background: `linear-gradient(135deg, white 0%, ${colors.primary}03 100%)`,
-                }}
-              >
-                <CardHeader className="pb-3" style={{ borderBottomColor: colors.primary + '10' }}>
+              <Card className="border-none shadow-lg">
+                <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2" style={{ color: colors.primary }}>
                     <Timer className="h-5 w-5" />
                     Recent Paid Timer Sessions
@@ -756,150 +889,53 @@ const AdminHumanChatDashboard = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="rounded-lg overflow-hidden border" style={{ borderColor: colors.primary + '20' }}>
+                  <div className="rounded-lg overflow-hidden border">
                     <Table>
                       <TableHeader>
                         <TableRow style={{ backgroundColor: colors.primary + '05' }}>
-                          <TableHead style={{ color: colors.primary }}>User</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Psychic</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Amount</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Duration</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Ended At</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Chat Details</TableHead>
+                          <TableHead>User</TableHead>
+                          <TableHead>Psychic</TableHead>
+                          <TableHead>Amount</TableHead>
+                          <TableHead>Duration</TableHead>
+                          <TableHead>Ended At</TableHead>
+                          <TableHead>Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {loading ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-12">
-                              <div className="flex flex-col items-center justify-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.secondary }} />
-                                <span style={{ color: colors.primary + '70' }}>Loading paid timers...</span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
                         ) : dashboardData.lists.recentPaidTimers?.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-12" style={{ color: colors.primary + '70' }}>
-                              <div className="flex flex-col items-center gap-3">
-                                <Timer className="h-12 w-12" style={{ color: colors.primary + '20' }} />
-                                <p className="font-medium">No recent paid timers</p>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center py-8">No recent paid timers</TableCell></TableRow>
                         ) : (
-                          dashboardData.lists.recentPaidTimers?.map((timer, index) => {
-                            const hasSession = !!sessionIdMap[timer._id];
-                            
-                            return (
-                              <TableRow 
-                                key={timer._id || index}
-                                className="cursor-pointer hover:scale-[1.01] transition-transform duration-200"
-                                style={{ 
-                                  backgroundColor: index % 2 === 0 ? colors.primary + '02' : 'white',
-                                }}
-                                onClick={() => handleViewChatDetails(timer._id, true)}
-                              >
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <div 
-                                      className="h-8 w-8 rounded-full flex items-center justify-center"
-                                      style={{ backgroundColor: colors.primary + '05' }}
-                                    >
-                                      <User className="h-4 w-4" style={{ color: colors.primary }} />
-                                    </div>
-                                    <div>
-                                      <p className="font-medium text-sm" style={{ color: colors.primary }}>
-                                        {getUserDisplayName(timer, true)}
-                                      </p>
-                                      {userDetails[timer._id]?.email && (
-                                        <p className="text-xs" style={{ color: colors.primary + '70' }}>
-                                          {userDetails[timer._id].email}
-                                        </p>
-                                      )}
-                                      {timer.user === 'Unknown User' && !userDetails[timer._id] && (
-                                        <Button
-                                          variant="link"
-                                          size="sm"
-                                          className="h-4 p-0 text-xs"
-                                          onClick={(e) => handleFetchUserDetails(timer._id, e)}
-                                          style={{ color: colors.secondary }}
-                                        >
-                                          Try to find user
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <div 
-                                      className="h-8 w-8 rounded-full flex items-center justify-center"
-                                      style={{ backgroundColor: colors.accent + '10' }}
-                                    >
-                                      <User className="h-4 w-4" style={{ color: colors.accent }} />
-                                    </div>
-                                    <div>
-                                      <p className="font-medium text-sm" style={{ color: colors.primary }}>
-                                        {getPsychicDisplayName(timer.psychic)}
-                                      </p>
-                                      {typeof timer.psychic === 'object' && timer.psychic?.email && (
-                                        <p className="text-xs" style={{ color: colors.primary + '70' }}>
-                                          {timer.psychic.email}
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <DollarSign className="h-4 w-4" style={{ color: colors.secondary }} />
-                                    <span className="font-bold" style={{ color: colors.primary }}>
-                                      {formatAmount(timer.amount)}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-1">
-                                    <Timer className="h-4 w-4" style={{ color: colors.warning }} />
-                                    <span className="text-sm font-medium" style={{ color: colors.primary }}>
-                                      {formatDuration(timer.duration)}
-                                    </span>
-                                  </div>
-                                </TableCell>
-                                <TableCell className="text-sm" style={{ color: colors.primary + '80' }}>
-                                  {formatDate(timer.endedAt)}
-                                </TableCell>
-                                <TableCell>
-                                  <Button
-                                    variant={hasSession ? "default" : "outline"}
-                                    size="sm"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleViewChatDetails(timer._id, true);
-                                    }}
-                                    disabled={!hasSession || loading}
-                                    title={hasSession ? "View chat session" : "No chat session found"}
-                                    className="hover:scale-105 transition-transform duration-200"
-                                    style={{
-                                      backgroundColor: hasSession ? colors.secondary : 'transparent',
-                                      color: hasSession ? colors.primary : colors.primary + '70',
-                                      borderColor: hasSession ? colors.secondary : colors.primary + '20',
-                                    }}
-                                  >
-                                    {hasSession ? (
-                                      <>
-                                        <ViewIcon className="h-4 w-4 mr-2" />
-                                        View Chat
-                                      </>
-                                    ) : (
-                                      "No Chat"
-                                    )}
-                                  </Button>
-                                </TableCell>
-                              </TableRow>
-                            );
-                          })
+                          dashboardData.lists.recentPaidTimers?.slice(0, 5).map((timer, index) => (
+                            <TableRow key={timer._id || index}>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-green-100 text-green-600 text-xs">{timer.user?.[0] || 'U'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{getUserDisplayName(timer, true)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-2">
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-purple-100 text-purple-600 text-xs">{timer.psychic?.[0] || 'P'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{getPsychicDisplayName(timer.psychic)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3 text-yellow-600" />
+                                  <span className="font-medium">{formatAmount(timer.amount)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>{formatDuration(timer.duration)}</TableCell>
+                              <TableCell className="text-sm">{formatDate(timer.endedAt)}</TableCell>
+                              <TableCell>
+                                <Button variant="outline" size="sm" onClick={() => handleViewChatDetails(timer._id, true)}>
+                                  <Eye className="h-3 w-3 mr-1" /> View
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))
                         )}
                       </TableBody>
                     </Table>
@@ -910,13 +946,8 @@ const AdminHumanChatDashboard = () => {
 
             {/* Recent Psychics Tab */}
             <TabsContent value="recent-psychics">
-              <Card 
-                className="border-none shadow-lg"
-                style={{ 
-                  background: `linear-gradient(135deg, white 0%, ${colors.primary}03 100%)`,
-                }}
-              >
-                <CardHeader className="pb-3" style={{ borderBottomColor: colors.primary + '10' }}>
+              <Card className="border-none shadow-lg">
+                <CardHeader className="pb-3">
                   <CardTitle className="flex items-center gap-2" style={{ color: colors.primary }}>
                     <Crown className="h-5 w-5" />
                     Recent Psychics
@@ -926,110 +957,50 @@ const AdminHumanChatDashboard = () => {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="rounded-lg overflow-hidden border" style={{ borderColor: colors.primary + '20' }}>
+                  <div className="rounded-lg overflow-hidden border">
                     <Table>
                       <TableHeader>
                         <TableRow style={{ backgroundColor: colors.primary + '05' }}>
-                          <TableHead style={{ color: colors.primary }}>Name</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Email</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Rate/Min</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Rating</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Joined</TableHead>
-                          <TableHead style={{ color: colors.primary }}>Status</TableHead>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Email</TableHead>
+                          <TableHead>Rate/Min</TableHead>
+                          <TableHead>Rating</TableHead>
+                          <TableHead>Joined</TableHead>
+                          <TableHead>Status</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {loading ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-12">
-                              <div className="flex flex-col items-center justify-center gap-3">
-                                <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.secondary }} />
-                                <span style={{ color: colors.primary + '70' }}>Loading psychics...</span>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
                         ) : dashboardData.lists.psychics?.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={6} className="text-center py-12" style={{ color: colors.primary + '70' }}>
-                              <div className="flex flex-col items-center gap-3">
-                                <Users className="h-12 w-12" style={{ color: colors.primary + '20' }} />
-                                <p className="font-medium">No psychics found</p>
-                              </div>
-                            </TableCell>
-                          </TableRow>
+                          <TableRow><TableCell colSpan={6} className="text-center py-8">No psychics found</TableCell></TableRow>
                         ) : (
-                          dashboardData.lists.psychics?.map((psychic, index) => (
-                            <TableRow 
-                              key={psychic._id || index}
-                              style={{ 
-                                backgroundColor: index % 2 === 0 ? colors.primary + '02' : 'white',
-                              }}
-                            >
+                          dashboardData.lists.psychics?.slice(0, 5).map((psychic, index) => (
+                            <TableRow key={psychic._id || index}>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                  <div 
-                                    className="h-8 w-8 rounded-full flex items-center justify-center"
-                                    style={{ 
-                                      background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)`,
-                                    }}
-                                  >
-                                    <User className="h-4 w-4" style={{ color: colors.textLight }} />
-                                  </div>
-                                  <div>
-                                    <p className="font-medium text-sm" style={{ color: colors.primary }}>
-                                      {getPsychicDisplayName(psychic)}
-                                    </p>
-                                  </div>
+                                  <Avatar className="h-6 w-6"><AvatarFallback className="bg-purple-100 text-purple-600 text-xs">{psychic.name?.[0] || 'P'}</AvatarFallback></Avatar>
+                                  <span className="text-sm">{psychic.name}</span>
                                 </div>
                               </TableCell>
-                              <TableCell>
-                                <p className="text-sm" style={{ color: colors.primary + '80' }}>{psychic.email}</p>
-                              </TableCell>
+                              <TableCell className="text-sm">{psychic.email}</TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
-                                  <DollarSign className="h-4 w-4" style={{ color: colors.secondary }} />
-                                  <span className="font-bold" style={{ color: colors.primary }}>
-                                    ${(psychic.ratePerMin || 0).toFixed(2)}
-                                  </span>
+                                  <DollarSign className="h-3 w-3 text-yellow-600" />
+                                  <span>${(psychic.ratePerMin || 0).toFixed(2)}</span>
                                 </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
-                                  <BarChart3 className="h-4 w-4" style={{ color: colors.accent }} />
-                                  <span className="font-bold" style={{ color: colors.primary }}>
-                                    {psychic.averageRating ? psychic.averageRating.toFixed(1) : '0.0'}/5
-                                  </span>
-                                  <span className="text-xs" style={{ color: colors.primary + '70' }}>
-                                    ({psychic.totalRatings || 0})
-                                  </span>
+                                  <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />
+                                  <span>{(psychic.averageRating || 0).toFixed(1)}</span>
+                                  <span className="text-xs">({psychic.totalRatings || 0})</span>
                                 </div>
                               </TableCell>
-                              <TableCell className="text-sm" style={{ color: colors.primary + '80' }}>
-                                {formatDate(psychic.createdAt)}
-                              </TableCell>
+                              <TableCell className="text-sm">{formatDate(psychic.createdAt)}</TableCell>
                               <TableCell>
-                                <Badge 
-                                  className="border font-medium"
-                                  style={{
-                                    backgroundColor: psychic.isVerified
-                                      ? colors.success + '10'
-                                      : colors.warning + '10',
-                                    color: psychic.isVerified
-                                      ? colors.success
-                                      : colors.warning,
-                                    borderColor: psychic.isVerified
-                                      ? colors.success + '30'
-                                      : colors.warning + '30',
-                                  }}
-                                >
-                                  {psychic.isVerified ? (
-                                    <>
-                                      <CheckCircle className="h-3 w-3 mr-1" />
-                                      Verified
-                                    </>
-                                  ) : (
-                                    'Pending'
-                                  )}
+                                <Badge className={psychic.isVerified ? 'bg-green-500/10 text-green-700' : 'bg-yellow-500/10 text-yellow-700'}>
+                                  {psychic.isVerified ? 'Verified' : 'Pending'}
                                 </Badge>
                               </TableCell>
                             </TableRow>

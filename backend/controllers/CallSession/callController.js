@@ -429,7 +429,7 @@ const acceptCall = async (req, res) => {
     });
   }
 };
-// Get specific call request by ID (for psychic) - SIMPLIFIED
+// Get specific call request by ID (for psychic) - UPDATED with timer logic
 const getCallRequestById = async (req, res) => {
   try {
     const { callRequestId } = req.params;
@@ -486,9 +486,12 @@ const getCallRequestById = async (req, res) => {
     // Check if expired
     const now = new Date();
     const expiresAt = new Date(callRequest.expiresAt);
+    let timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+    
     if (callRequest.status === 'pending' && now > expiresAt) {
       callRequest.status = 'expired';
       await callRequest.save();
+      timeRemaining = 0;
     }
 
     // Get active session if exists
@@ -497,17 +500,26 @@ const getCallRequestById = async (req, res) => {
       status: { $in: ['ringing', 'in-progress'] }
     }).select('_id status startTime roomName participantTokens');
 
-    // Calculate time remaining if pending
-    let timeRemaining = null;
-    if (callRequest.status === 'pending' && callRequest.expiresAt) {
-      timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+    // Calculate elapsed time for active session
+    let elapsedSeconds = 0;
+    let creditsUsed = 0;
+    if (activeSession && activeSession.startTime && activeSession.status === 'in-progress') {
+      const startTime = new Date(activeSession.startTime);
+      elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+      creditsUsed = Math.ceil(elapsedSeconds / 60) * (callRequest.creditsPerMin || 1);
     }
 
     // Prepare response data
     const responseData = {
       ...callRequest.toObject(),
       timeRemaining,
-      activeSession,
+      activeSession: activeSession ? {
+        ...activeSession.toObject(),
+        elapsedSeconds,
+        creditsUsed
+      } : null,
+      elapsedSeconds,
+      creditsUsed,
       isExpired: callRequest.status === 'expired',
       canAccept: callRequest.status === 'pending' && timeRemaining > 0
     };
@@ -528,6 +540,7 @@ const getCallRequestById = async (req, res) => {
   }
 };
 
+// Get call with details - UPDATED with timer logic (NO NAME CHANGE)
 const getCallWithDetails = async (req, res) => {
   try {
     const { callRequestId } = req.params;
@@ -555,7 +568,7 @@ const getCallWithDetails = async (req, res) => {
       });
     }
 
-    // Check if expired (even if status is still pending)
+    // Check if expired
     const now = new Date();
     let timeRemaining = 0;
     let isExpired = false;
@@ -581,6 +594,15 @@ const getCallWithDetails = async (req, res) => {
       ],
       status: { $in: ['ringing', 'in-progress'] }
     }).select('_id status startTime roomName participantTokens');
+    
+    // Calculate elapsed time for active session
+    let elapsedSeconds = 0;
+    let creditsUsed = 0;
+    if (activeSession && activeSession.startTime && activeSession.status === 'in-progress') {
+      const startTime = new Date(activeSession.startTime);
+      elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+      creditsUsed = Math.ceil(elapsedSeconds / 60) * (callRequest.creditsPerMin || 1);
+    }
 
     // Prepare response data
     const responseData = {
@@ -597,7 +619,13 @@ const getCallWithDetails = async (req, res) => {
       },
       user: callRequest.userId,
       psychic: callRequest.psychicId,
-      activeSession,
+      activeSession: activeSession ? {
+        ...activeSession.toObject(),
+        elapsedSeconds,
+        creditsUsed
+      } : null,
+      elapsedSeconds,
+      creditsUsed,
       canAccept: callRequest.status === 'pending' && timeRemaining > 0 && !activeSession,
       canJoin: activeSession && activeSession.status === 'ringing'
     };
@@ -605,6 +633,8 @@ const getCallWithDetails = async (req, res) => {
     console.log(`✅ Call details fetched:`, {
       status: responseData.callRequest.status,
       timeRemaining,
+      elapsedSeconds,
+      creditsUsed,
       canAccept: responseData.canAccept,
       hasActiveSession: !!activeSession
     });
@@ -813,21 +843,141 @@ const cancelCall = async (req, res) => {
     });
   }
 };
+// ============= TIMER SYNC ENDPOINT =============
+// Add this function to your callController.js file
 
 
-// Remove the io import from top and pass it as parameter
+ 
+const syncCallTimer = async (req, res) => {
+  try {
+    const { callSessionId } = req.params;
+    const userId = req.user?._id;
+    
+    console.log(`⏱️ Timer sync requested for session: ${callSessionId} by user: ${userId}`);
+    
+    // Find the active session
+    const activeSession = await ActiveCallSession.findById(callSessionId)
+      .populate('userId', 'firstName lastName')
+      .populate('psychicId', 'name');
+    
+    if (!activeSession) {
+      // Check if it's in archived sessions
+      const archivedSession = await CallSession.findOne({ 
+        $or: [
+          { _id: callSessionId },
+          { callSid: callSessionId }
+        ]
+      });
+      
+      if (archivedSession) {
+        return res.status(200).json({
+          success: true,
+          data: {
+            callSessionId: archivedSession._id,
+            elapsedSeconds: archivedSession.durationSeconds || 0,
+            startTime: archivedSession.startTime,
+            endTime: archivedSession.endTime,
+            status: 'completed',
+            isArchived: true
+          }
+        });
+      }
+      
+      return res.status(404).json({
+        success: false,
+        message: 'Call session not found'
+      });
+    }
+    
+    // Verify user has access to this session
+    const isUser = activeSession.userId?._id.toString() === userId?.toString();
+    const isPsychic = activeSession.psychicId?._id.toString() === userId?.toString();
+    
+    if (!isUser && !isPsychic && req.user?.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to access this call'
+      });
+    }
+    
+    // Calculate elapsed time
+    let elapsedSeconds = 0;
+    let startTime = activeSession.startTime;
+    
+    if (activeSession.status === 'in-progress' && activeSession.startTime) {
+      elapsedSeconds = Math.floor((new Date() - new Date(activeSession.startTime)) / 1000);
+    } else if (activeSession.elapsedSeconds) {
+      elapsedSeconds = activeSession.elapsedSeconds;
+    } else if (activeSession.startTime && activeSession.endTime) {
+      elapsedSeconds = Math.floor((new Date(activeSession.endTime) - new Date(activeSession.startTime)) / 1000);
+    }
+    
+    // Calculate credits used
+    const minutesUsed = Math.ceil(elapsedSeconds / 60);
+    const creditsUsed = minutesUsed * (activeSession.creditsPerMin || 1);
+    
+    // Prepare response
+    const responseData = {
+      callSessionId: activeSession._id,
+      callRequestId: activeSession.callRequestId,
+      elapsedSeconds,
+      startTime: activeSession.startTime,
+      endTime: activeSession.endTime,
+      status: activeSession.status,
+      creditsUsed,
+      ratePerMin: activeSession.ratePerMin,
+      creditsPerMin: activeSession.creditsPerMin,
+      isFreeSession: activeSession.isFreeSession,
+      roomName: activeSession.roomName,
+      participantTokens: activeSession.participantTokens
+    };
+    
+    // Add participant info based on who's requesting
+    if (isUser) {
+      responseData.psychic = {
+        _id: activeSession.psychicId?._id,
+        name: activeSession.psychicId?.name,
+        image: activeSession.psychicId?.image
+      };
+    } else if (isPsychic) {
+      responseData.user = {
+        _id: activeSession.userId?._id,
+        firstName: activeSession.userId?.firstName,
+        lastName: activeSession.userId?.lastName,
+        image: activeSession.userId?.image
+      };
+    }
+    
+    console.log(`⏱️ Timer sync response: ${elapsedSeconds}s for session ${callSessionId}`);
+    
+    res.status(200).json({
+      success: true,
+      data: responseData
+    });
+    
+  } catch (error) {
+    console.error('❌ Error syncing timer:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to sync timer',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 const endCall = async (req, res) => {
   try {
     const { callSessionId } = req.params;
     const { endReason } = req.body;
     const userId = req.user._id;
+    const isPsychic = req.originalUrl.includes('/psychic/');
     
-    console.log(`📞 Ending call session: ${callSessionId}, user: ${userId}`);
+    console.log(`📞 Ending call session: ${callSessionId}, user: ${userId}, isPsychic: ${isPsychic}`);
     
-    // Find active session
+    // Find active session with populated data
     const activeSession = await ActiveCallSession.findById(callSessionId)
-      .populate('userId')
-      .populate('psychicId');
+      .populate('userId', 'firstName lastName email credits hasUsedFreeAudioMinute socketId')
+      .populate('psychicId', 'name email socketId totalEarnings totalCalls totalMinutes status');
     
     if (!activeSession) {
       return res.status(404).json({
@@ -838,112 +988,265 @@ const endCall = async (req, res) => {
     
     // Verify user is part of this session
     const isUser = activeSession.userId._id.toString() === userId.toString();
-    const isPsychic = activeSession.psychicId._id.toString() === userId.toString();
+    const isPsychicParticipant = activeSession.psychicId._id.toString() === userId.toString();
     
-    if (!isUser && !isPsychic) {
+    if (!isUser && !isPsychicParticipant) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to end this call'
       });
     }
     
-    // Calculate duration
+    // Check if call is already ended
+    if (activeSession.status === 'ended' || activeSession.status === 'completed') {
+      return res.status(400).json({
+        success: false,
+        message: 'Call has already ended'
+      });
+    }
+    
+    // CRITICAL: Calculate accurate duration with STOPPED timer
     const endTime = new Date();
     let durationSeconds = 0;
+    let startTime = activeSession.startTime;
     
-    if (activeSession.startTime) {
-      durationSeconds = Math.floor((endTime - activeSession.startTime) / 1000);
-      console.log(`⏱️ Call duration: ${durationSeconds} seconds`);
+    // Use current time if startTime exists, otherwise use 0
+    if (startTime) {
+      durationSeconds = Math.floor((endTime - new Date(startTime)) / 1000);
+      console.log(`⏱️ Call duration: ${durationSeconds} seconds (start: ${startTime}, end: ${endTime})`);
+    } else {
+      console.log(`⚠️ No start time found for session, setting duration to 0`);
+      startTime = endTime; // Set start time to now to avoid negative duration
     }
     
-    // Calculate credits used
+    // Ensure duration is not negative
+    durationSeconds = Math.max(0, durationSeconds);
+    
+    // Calculate minutes used (rounded up to nearest minute for billing)
     const minutesUsed = Math.ceil(durationSeconds / 60);
-    const creditsUsed = minutesUsed * activeSession.creditsPerMin;
+    const creditsPerMin = activeSession.creditsPerMin || 1;
+    const creditsUsed = minutesUsed * creditsPerMin;
     
-    // Mark free session as used if applicable
-    if (activeSession.isFreeSession && durationSeconds > 0) {
-      await User.findByIdAndUpdate(activeSession.userId._id, {
-        hasUsedFreeAudioMinute: true
-      });
-      console.log(`⭐ Marked free session as used for user: ${activeSession.userId._id}`);
+    // Determine who ended the call
+    const endedBy = isPsychic ? 'psychic' : (isUser ? 'user' : 'unknown');
+    const finalEndReason = endReason || (endedBy === 'user' ? 'ended_by_user' : 'ended_by_psychic');
+    
+    console.log(`📊 Call stats:`, {
+      durationSeconds,
+      minutesUsed,
+      creditsPerMin,
+      creditsUsed,
+      endedBy,
+      isFreeSession: activeSession.isFreeSession
+    });
+    
+    // ===== HANDLE FREE SESSION =====
+    if (activeSession.isFreeSession) {
+      if (durationSeconds > 0) {
+        // Mark free session as used regardless of duration
+        await User.findByIdAndUpdate(activeSession.userId._id, {
+          hasUsedFreeAudioMinute: true
+        });
+        console.log(`✅ Marked free session as used for user ${activeSession.userId._id}`);
+      }
+      
+      // Calculate billable time (beyond 60 seconds)
+      let billableSeconds = Math.max(0, durationSeconds - 60);
+      const billableMinutes = Math.ceil(billableSeconds / 60);
+      const creditsToDeduct = billableMinutes * creditsPerMin;
+      
+      if (creditsToDeduct > 0 && !activeSession.isFreeSession) {
+        await User.findByIdAndUpdate(activeSession.userId._id, {
+          $inc: { credits: -creditsToDeduct }
+        });
+        console.log(`💰 Deducted ${creditsToDeduct} credits from user (beyond free minute)`);
+      }
+    } else {
+      // Regular paid session - deduct all credits
+      if (creditsUsed > 0) {
+        await User.findByIdAndUpdate(activeSession.userId._id, {
+          $inc: { credits: -creditsUsed }
+        });
+        console.log(`💰 Deducted ${creditsUsed} credits from user`);
+      }
     }
     
-    // Archive to CallSession
+    // ===== UPDATE PSYCHIC EARNINGS =====
+    // Psychic gets 70% of credits
+    const psychicEarnings = creditsUsed * 0.7;
+    
+    await Psychic.findByIdAndUpdate(activeSession.psychicId._id, {
+      $inc: { 
+        totalEarnings: psychicEarnings,
+        totalCalls: 1,
+        totalMinutes: minutesUsed
+      },
+      status: 'online', // Set psychic back to online
+      lastActive: new Date()
+    });
+    console.log(`💰 Added ${psychicEarnings} earnings to psychic`);
+    
+    // ===== UPDATE USER STATS =====
+    await User.findByIdAndUpdate(activeSession.userId._id, {
+      $inc: {
+        totalCalls: 1,
+        totalMinutes: minutesUsed
+      }
+    });
+    
+    // ===== ARCHIVE THE SESSION =====
     const archivedSession = new CallSession({
       callSid: activeSession._id.toString(),
       roomName: activeSession.roomName,
-      roomSid: activeSession.twilioRoomSid,
+      roomSid: activeSession.twilioRoomSid || activeSession.roomSid,
       userId: activeSession.userId._id,
       psychicId: activeSession.psychicId._id,
+      callRequestId: activeSession.callRequestId,
       status: 'completed',
-      endReason: endReason || (isUser ? 'ended_by_user' : 'ended_by_psychic'),
-      startTime: activeSession.startTime,
-      endTime,
-      durationSeconds,
-      ratePerMin: activeSession.ratePerMin,
-      creditsPerMin: activeSession.creditsPerMin,
+      endReason: finalEndReason,
+      endedBy: endedBy,
+      startTime: startTime,
+      endTime: endTime,
+      durationSeconds: durationSeconds,
+      ratePerMin: activeSession.ratePerMin || 1,
+      creditsPerMin: creditsPerMin,
       totalCreditsUsed: creditsUsed,
-      userPlatform: activeSession.userPlatform,
-      psychicPlatform: activeSession.psychicPlatform
+      psychicEarnings: psychicEarnings,
+      platformFee: creditsUsed * 0.3, // 30% platform fee
+      isFreeSession: activeSession.isFreeSession || false,
+      userPlatform: activeSession.userPlatform || 'web',
+      psychicPlatform: activeSession.psychicPlatform || 'web'
     });
     
     await archivedSession.save();
-    console.log(`📁 Archived call session: ${archivedSession._id}`);
+    console.log(`📦 Archived session created: ${archivedSession._id}`);
     
-    // Delete active session
-    await ActiveCallSession.deleteOne({ _id: callSessionId });
-    console.log(`🗑️ Deleted active session: ${callSessionId}`);
+    // ===== CRITICAL: UPDATE ACTIVE SESSION STATUS =====
+    // Update the active session to 'ended' with all the calculated data
+    activeSession.status = 'ended';
+    activeSession.endTime = endTime;
+    activeSession.endReason = finalEndReason;
+    activeSession.endedBy = endedBy;
+    activeSession.durationSeconds = durationSeconds;
+    activeSession.totalCreditsUsed = creditsUsed;
     
-    // Update psychic status
-    await Psychic.findByIdAndUpdate(activeSession.psychicId._id, {
-      status: 'online',
-      lastActive: new Date()
-    });
-    console.log(`👤 Updated psychic ${activeSession.psychicId._id} status to online`);
+    // Save the updated active session
+    await activeSession.save();
+    console.log(`✅ Active session ${callSessionId} status updated to 'ended'`);
     
-    // Get io from app (injected via middleware)
-    const io = req.app.get('io'); // Assuming you set io on app
+    // ===== DELETE OR KEEP? =====
+    // Option 1: Delete the active session (if you want to clean up)
+    // await ActiveCallSession.deleteOne({ _id: callSessionId });
     
-    // Notify both participants via socket if io is available
+    // Option 2: Keep but mark as archived (what we're doing above)
+    // We already updated status to 'ended', so it won't appear in active queries
+    
+    // ===== SOCKET NOTIFICATIONS =====
+    // Get io instance from app
+    const io = req.app.get('io');
+    
     if (io) {
       const audioNamespace = io.of('/audio-calls');
       
-      console.log(`🔔 Notifying participants about ended call`);
+      // Prepare call end data
+      const endCallData = {
+        callSessionId: activeSession._id.toString(),
+        callRequestId: activeSession.callRequestId,
+        duration: durationSeconds,
+        durationFormatted: formatDuration(durationSeconds),
+        creditsUsed,
+        endReason: finalEndReason,
+        endedBy: endedBy,
+        endTime: endTime.toISOString(),
+        roomName: activeSession.roomName
+      };
       
-      // Notify user
-      if (activeSession.userId.socketId) {
+      console.log(`🔔 Sending call-ended events to participants`);
+      
+      // Send to user with their role specified
+      if (activeSession.userId && activeSession.userId.socketId) {
         audioNamespace.to(activeSession.userId.socketId).emit('call-ended', {
-          callSessionId: activeSession._id,
-          duration: durationSeconds,
-          creditsUsed,
-          endReason: endReason || 'ended_by_user'
+          ...endCallData,
+          role: 'user',
+          message: endedBy === 'user' ? 'You ended the call' : 
+                  (endedBy === 'psychic' ? 'Psychic ended the call' : 'Call ended')
         });
-        console.log(`👤 Notified user: ${activeSession.userId._id}`);
+        console.log(`👤 Notified user ${activeSession.userId._id} via socket`);
+      } else {
+        console.log(`⚠️ User ${activeSession.userId?._id} has no socketId`);
       }
       
-      // Notify psychic
-      if (activeSession.psychicId.socketId) {
+      // Send to psychic with their role specified
+      if (activeSession.psychicId && activeSession.psychicId.socketId) {
         audioNamespace.to(activeSession.psychicId.socketId).emit('call-ended', {
-          callSessionId: activeSession._id,
-          duration: durationSeconds,
-          endReason: endReason || 'ended_by_user'
+          ...endCallData,
+          role: 'psychic',
+          message: endedBy === 'psychic' ? 'You ended the call' : 
+                  (endedBy === 'user' ? 'User ended the call' : 'Call ended')
         });
-        console.log(`🔮 Notified psychic: ${activeSession.psychicId._id}`);
+        console.log(`🔮 Notified psychic ${activeSession.psychicId._id} via socket`);
+      } else {
+        console.log(`⚠️ Psychic ${activeSession.psychicId?._id} has no socketId`);
       }
-    } else {
-      console.log('⚠️ Socket.IO not available for notifications');
+      
+      // Also broadcast to the room as a backup
+      if (activeSession.roomName) {
+        audioNamespace.to(activeSession.roomName).emit('room-closed', {
+          roomName: activeSession.roomName,
+          reason: 'call_ended',
+          endedBy: endedBy
+        });
+        console.log(`📢 Broadcast to room: ${activeSession.roomName}`);
+        
+        // Force disconnect all participants from the room
+        try {
+          const sockets = await audioNamespace.in(activeSession.roomName).fetchSockets();
+          sockets.forEach(socket => {
+            socket.leave(activeSession.roomName);
+            socket.emit('call-ended-broadcast', {
+              ...endCallData,
+              broadcast: true
+            });
+          });
+          console.log(`👋 Disconnected ${sockets.length} sockets from room ${activeSession.roomName}`);
+        } catch (socketError) {
+          console.error('Error disconnecting sockets from room:', socketError);
+        }
+      }
     }
     
+    // ===== CLEAN UP TWILIO ROOM =====
+    // If you have Twilio service, end the room
+    if (global.twilioService && global.twilioService.isReady && global.twilioService.isReady()) {
+      try {
+        if (activeSession.roomSid || activeSession.twilioRoomSid) {
+          const roomSid = activeSession.roomSid || activeSession.twilioRoomSid;
+          await global.twilioService.completeRoom(roomSid);
+          console.log(`✅ Twilio room ${roomSid} completed`);
+        }
+      } catch (twilioError) {
+        console.error('❌ Error ending Twilio room:', twilioError);
+        // Don't fail the request if Twilio cleanup fails
+      }
+    }
+    
+    // Send success response
     res.status(200).json({
       success: true,
       message: 'Call ended successfully',
       data: {
         callSessionId: activeSession._id,
+        callRequestId: activeSession.callRequestId,
         duration: durationSeconds,
+        durationFormatted: formatDuration(durationSeconds),
         creditsUsed,
-        endReason: endReason || 'ended_by_user'
+        endReason: finalEndReason,
+        endedBy: endedBy,
+        endTime: endTime
       }
     });
+    
+    console.log(`✅ Call ${callSessionId} ended successfully after ${durationSeconds}s`);
     
   } catch (error) {
     console.error('❌ Error ending call:', error);
@@ -954,6 +1257,94 @@ const endCall = async (req, res) => {
     });
   }
 };
+
+
+
+
+// Also add this helper function to handle disconnections
+const handleCallDisconnection = async (socket, io) => {
+  try {
+    console.log(`🔌 Handling disconnection for socket: ${socket.id}`);
+    
+    // Find active sessions for this socket
+    const activeSession = await ActiveCallSession.findOne({
+      $or: [
+        { 'userId.socketId': socket.id },
+        { 'psychicId.socketId': socket.id }
+      ]
+    }).populate('userId').populate('psychicId');
+    
+    if (activeSession) {
+      console.log(`📞 Found active session ${activeSession._id} for disconnected socket`);
+      
+      // Determine who disconnected
+      const isUser = activeSession.userId?.socketId === socket.id;
+      const isPsychic = activeSession.psychicId?.socketId === socket.id;
+      
+      if (isUser || isPsychic) {
+        // Auto-end the call
+        const endReason = isUser ? 'user_disconnected' : 'psychic_disconnected';
+        
+        // Calculate duration
+        const endTime = new Date();
+        let durationSeconds = 0;
+        
+        if (activeSession.startTime) {
+          durationSeconds = Math.floor((endTime - activeSession.startTime) / 1000);
+        }
+        
+        // Archive the session
+        const archivedSession = new CallSession({
+          callSid: activeSession._id.toString(),
+          roomName: activeSession.roomName,
+          userId: activeSession.userId._id,
+          psychicId: activeSession.psychicId._id,
+          status: 'disconnected',
+          endReason: endReason,
+          endedBy: isUser ? 'user' : 'psychic',
+          startTime: activeSession.startTime,
+          endTime,
+          durationSeconds,
+          ratePerMin: activeSession.ratePerMin,
+          creditsPerMin: activeSession.creditsPerMin,
+          totalCreditsUsed: 0,
+          isFreeSession: activeSession.isFreeSession
+        });
+        
+        await archivedSession.save();
+        await ActiveCallSession.deleteOne({ _id: activeSession._id });
+        
+        // Notify the other participant
+        const audioNamespace = io.of('/audio-calls');
+        const otherSocketId = isUser ? activeSession.psychicId?.socketId : activeSession.userId?.socketId;
+        
+        if (otherSocketId) {
+          audioNamespace.to(otherSocketId).emit('call-completed', {
+            callSessionId: activeSession._id,
+            duration: durationSeconds,
+            endReason: endReason,
+            endedBy: isUser ? 'user' : 'psychic',
+            message: isUser ? 'User disconnected' : 'Psychic disconnected'
+          });
+        }
+        
+        // Broadcast to room
+        if (activeSession.roomName) {
+          audioNamespace.to(activeSession.roomName).emit('call-ended-broadcast', {
+            callSessionId: activeSession._id,
+            reason: 'participant_disconnected'
+          });
+        }
+        
+        console.log(`✅ Call auto-ended due to ${endReason}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error handling disconnection:', error);
+  }
+};
+
+
 
 // 6. Get Call Status
 const getCallStatus = async (req, res) => {
@@ -1200,31 +1591,112 @@ const twilioWebhook = async (req, res) => {
 };
 
 // 10. Get Active Call for User
+// Get Active Call for User - UPDATED with real-time timer
+// Get Active Call for User - UPDATED with real-time timer (NO NAME CHANGE)
 const getActiveCall = async (req, res) => {
   try {
     const userId = req.user._id;
     
-    const activeCall = await ActiveCallSession.findOne({
+    console.log(`🔍 Fetching active call for user ${userId}`);
+    
+    // Find active call session
+    const activeSession = await ActiveCallSession.findOne({
       userId,
       status: { $in: ['initiated', 'ringing', 'in-progress'] }
     })
-    .populate('psychicId', 'name image bio ratePerMin')
-    .populate('userId', 'firstName lastName image');
+    .populate('psychicId', 'name image bio ratePerMin specialization averageRating totalCalls')
+    .populate('userId', 'firstName lastName image email')
+    .sort({ createdAt: -1 });
     
-    if (!activeCall) {
-      return res.status(404).json({
-        success: false,
-        message: 'No active call found'
-      });
+    // Find pending call request
+    const pendingRequest = await CallRequest.findOne({
+      userId,
+      status: 'pending'
+    })
+    .populate('psychicId', 'name image bio ratePerMin specialization averageRating totalCalls')
+    .sort({ requestedAt: -1 });
+    
+    // Calculate time remaining for pending request
+    let timeRemaining = 0;
+    let isExpired = false;
+    const now = new Date();
+    
+    if (pendingRequest && pendingRequest.expiresAt) {
+      const expiresAt = new Date(pendingRequest.expiresAt);
+      timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+      isExpired = timeRemaining === 0;
+      
+      // Auto-expire if time is up
+      if (isExpired && pendingRequest.status === 'pending') {
+        pendingRequest.status = 'expired';
+        await pendingRequest.save();
+        console.log(`⚠️ Auto-expired pending request ${pendingRequest._id}`);
+        
+        // Emit socket event for expiry
+        const io = req.app.get('io');
+        if (io) {
+          const audioNamespace = io.of('/audio-calls');
+          audioNamespace.to(userId.toString()).emit('call-expired', {
+            callRequestId: pendingRequest._id,
+            message: 'Call request expired'
+          });
+        }
+      }
     }
     
-    res.status(200).json({
+    // Calculate elapsed time for active session
+    let elapsedSeconds = 0;
+    let creditsUsed = 0;
+    let callStatus = null;
+    
+    if (activeSession) {
+      callStatus = activeSession.status;
+      
+      if (activeSession.startTime) {
+        const startTime = new Date(activeSession.startTime);
+        elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+        
+        // Calculate credits used (rounded up to nearest minute)
+        const minutesUsed = Math.ceil(elapsedSeconds / 60);
+        creditsUsed = minutesUsed * (activeSession.creditsPerMin || 1);
+      }
+    }
+    
+    // Prepare response
+    const responseData = {
       success: true,
-      data: activeCall
+      data: {
+        activeSession: activeSession ? {
+          ...activeSession.toObject(),
+          elapsedSeconds,
+          creditsUsed
+        } : null,
+        pendingRequest: pendingRequest ? {
+          ...pendingRequest.toObject(),
+          timeRemaining,
+          isExpired
+        } : null,
+        elapsedSeconds,
+        creditsUsed,
+        timeRemaining,
+        status: callStatus || (pendingRequest ? 'pending' : null),
+        hasActiveCall: !!(activeSession || pendingRequest)
+      }
+    };
+    
+    console.log(`✅ User active call fetched:`, {
+      hasActiveSession: !!activeSession,
+      hasPendingRequest: !!pendingRequest,
+      status: responseData.data.status,
+      elapsedSeconds,
+      timeRemaining,
+      creditsUsed
     });
     
+    res.status(200).json(responseData);
+    
   } catch (error) {
-    console.error('Error getting active call:', error);
+    console.error('❌ Error getting active call:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to get active call',
@@ -1233,40 +1705,86 @@ const getActiveCall = async (req, res) => {
   }
 };
 
-// Add this to your callController.js
+// Get Psychic Active Call - UPDATED with timer logic (NO NAME CHANGE)
 const getPsychicActiveCall = async (req, res) => {
   try {
     const psychicId = req.user._id;
+    
+    console.log(`🔍 Fetching active call for psychic ${psychicId}`);
     
     const activeCall = await ActiveCallSession.findOne({
       psychicId,
       status: { $in: ['ringing', 'in-progress'] }
     })
-    .populate('userId', 'firstName lastName image')
+    .populate('userId', 'firstName lastName image email socketId')
     .sort({ startTime: -1 });
-    
-    if (!activeCall) {
-      return res.status(404).json({
-        success: false,
-        message: 'No active call found'
-      });
-    }
     
     // Also check for pending call requests
     const pendingRequest = await CallRequest.findOne({
       psychicId,
       status: 'pending'
     })
-    .populate('userId', 'firstName lastName image')
+    .populate('userId', 'firstName lastName image email')
     .sort({ requestedAt: -1 });
     
-    res.status(200).json({
+    // Calculate elapsed time for active call
+    const now = new Date();
+    let elapsedSeconds = 0;
+    let creditsUsed = 0;
+    
+    if (activeCall && activeCall.startTime && activeCall.status === 'in-progress') {
+      const startTime = new Date(activeCall.startTime);
+      elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+      creditsUsed = Math.ceil(elapsedSeconds / 60) * (activeCall.creditsPerMin || 1);
+    }
+    
+    // Calculate time remaining for pending request
+    let timeRemaining = 0;
+    if (pendingRequest && pendingRequest.expiresAt) {
+      const expiresAt = new Date(pendingRequest.expiresAt);
+      timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+      
+      // Auto-expire if time is up
+      if (timeRemaining === 0 && pendingRequest.status === 'pending') {
+        pendingRequest.status = 'expired';
+        await pendingRequest.save();
+        
+        // Emit socket event
+        const io = req.app.get('io');
+        if (io) {
+          const audioNamespace = io.of('/audio-calls');
+          audioNamespace.to(psychicId.toString()).emit('call-expired', {
+            callRequestId: pendingRequest._id,
+            message: 'Call request expired'
+          });
+        }
+      }
+    }
+    
+    const responseData = {
       success: true,
       data: {
-        ...activeCall.toObject(),
-        callRequestId: pendingRequest?._id || activeCall.callRequestId
+        ...(activeCall ? activeCall.toObject() : {}),
+        elapsedSeconds,
+        creditsUsed,
+        callRequestId: pendingRequest?._id || activeCall?.callRequestId,
+        pendingRequest: pendingRequest ? {
+          ...pendingRequest.toObject(),
+          timeRemaining
+        } : null,
+        timeRemaining
       }
+    };
+    
+    console.log(`✅ Psychic active call fetched:`, {
+      hasActiveCall: !!activeCall,
+      hasPendingRequest: !!pendingRequest,
+      elapsedSeconds,
+      timeRemaining,
+      creditsUsed
     });
+    
+    res.status(200).json(responseData);
     
   } catch (error) {
     console.error('Error getting psychic active call:', error);
@@ -1280,8 +1798,7 @@ const getPsychicActiveCall = async (req, res) => {
 
 
 
-// Add to routes
-// In pendingController.js - UPDATED VERSION
+// Get psychic pending calls - UPDATED with timer logic (NO NAME CHANGE)
 const getPsychicPendingCalls = async (req, res) => {
   try {
     console.log('📞 [PENDING CONTROLLER] Getting pending calls...');
@@ -1297,7 +1814,7 @@ const getPsychicPendingCalls = async (req, res) => {
     
     const psychicId = req.user._id;
     
-    // TEMPORARY: Remove expiresAt filter to see all pending calls
+    // Query for pending calls
     const query = {
       psychicId,
       status: 'pending'
@@ -1305,7 +1822,7 @@ const getPsychicPendingCalls = async (req, res) => {
     
     console.log('Query:', JSON.stringify(query, null, 2));
     
-    // Get pending calls WITHOUT expiresAt filter for now
+    // Get pending calls
     const pendingCalls = await CallRequest.find(query)
       .populate('userId', 'firstName lastName image email phone')
       .sort({ requestedAt: -1 })
@@ -1328,54 +1845,53 @@ const getPsychicPendingCalls = async (req, res) => {
       });
     }
     
-    // Filter out expired calls manually
+    // Filter out expired calls manually and calculate time remaining
     const now = new Date();
-    const validCalls = pendingCalls.filter(call => {
-      if (!call.expiresAt) {
-        console.log(`Call ${call._id} has no expiresAt field - including it`);
-        return true;
-      }
-      
-      const expiresAt = new Date(call.expiresAt);
-      const isExpired = expiresAt <= now;
-      
-      if (isExpired) {
-        console.log(`Call ${call._id} expired at ${expiresAt}`);
-        // Update status to expired in database
-        CallRequest.findByIdAndUpdate(call._id, { status: 'expired' }).catch(err => {
-          console.error('Error updating expired call:', err);
-        });
-        return false;
-      }
-      
-      return true;
-    });
+    const validCalls = [];
     
-    console.log(`✅ ${validCalls.length} valid (non-expired) pending calls`);
-    
-    // Add time remaining for each call
-    const callsWithTimeRemaining = validCalls.map(call => {
+    for (const call of pendingCalls) {
       let timeRemaining = null;
+      let isExpired = false;
       
       if (call.expiresAt) {
         const expiresAt = new Date(call.expiresAt);
         timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
+        isExpired = timeRemaining === 0;
+        
+        if (isExpired) {
+          console.log(`Call ${call._id} expired at ${expiresAt}`);
+          // Update status to expired in database
+          await CallRequest.findByIdAndUpdate(call._id, { status: 'expired' });
+          
+          // Emit socket event
+          const io = req.app.get('io');
+          if (io) {
+            const audioNamespace = io.of('/audio-calls');
+            audioNamespace.to(psychicId.toString()).emit('call-expired', {
+              callRequestId: call._id,
+              message: 'Call request expired'
+            });
+          }
+          continue; // Skip expired calls
+        }
       }
       
-      return {
+      validCalls.push({
         ...call,
         timeRemaining,
         expiresAt: call.expiresAt ? new Date(call.expiresAt).toISOString() : null,
         requestedAt: new Date(call.requestedAt).toISOString(),
-        _id: call._id.toString() // Ensure _id is string
-      };
-    });
+        _id: call._id.toString()
+      });
+    }
+    
+    console.log(`✅ ${validCalls.length} valid (non-expired) pending calls with timers`);
     
     res.status(200).json({
       success: true,
-      message: `Found ${callsWithTimeRemaining.length} pending call${callsWithTimeRemaining.length !== 1 ? 's' : ''}`,
-      count: callsWithTimeRemaining.length,
-      data: callsWithTimeRemaining,
+      message: `Found ${validCalls.length} pending call${validCalls.length !== 1 ? 's' : ''}`,
+      count: validCalls.length,
+      data: validCalls,
       psychic: {
         id: req.user._id,
         name: req.user.name,
@@ -1410,8 +1926,10 @@ module.exports = {
   getPsychicCallHistory,
   twilioWebhook,
   getActiveCall,
+  handleCallDisconnection,
   getPsychicPendingCalls,
   getPsychicActiveCall,
   getCallRequestById, // Add this
-  getCallWithDetails  // Add this if you want the detailed version
+  getCallWithDetails ,
+  syncCallTimer   // Add this if you want the detailed version
 };

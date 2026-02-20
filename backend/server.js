@@ -145,6 +145,7 @@ const twilioVoiceRoutes = require('./routes/CallSession/twilioVoice');
 const statsRoutes = require('./routes/statsRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const feedback = require('./routes/feedbackRoutes');
+const userSessionRoutes = require('./routes/CallSession/userSessionRoutes');
 
 // API Routes (always included)
 app.use('/api/human-psychics', psychicRoutes);
@@ -163,6 +164,7 @@ app.use('/api', timerRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api', feedback);
+app.use('/api/usersession', userSessionRoutes);
 
 app.use('/api/admindata', admindataRoutes);
 

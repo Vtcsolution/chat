@@ -299,7 +299,7 @@ const App = () => {
                 
                 {/* Other Routes */}
                 <Route path="/all-notifications" element={<NotificationsPage />} />
-                <Route path="/chat-sessions" element={<ChatSessions />} />
+
           <Route path="/wallet" element={<MyWallet />} />
 
                 <Route path="/form-fill" element={<AI_Talk_Form />} />
@@ -324,7 +324,12 @@ const App = () => {
                     <ChatInterface />
                   </ProtectedRoute>
                 } />
-                
+                <Route path="/chat-sessions" element={
+                   <ProtectedRoute>
+                  <ChatSessions />
+                  </ProtectedRoute>
+                  } />
+
                 {/* Admin Routes */}
                 <Route path="/admin/login" element={<Admin_login />} />
 

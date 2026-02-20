@@ -10,9 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@radix-ui/react-tabs";
 import axios from "axios";
 import { useAuth } from "./screen/AuthContext";
 import Navigation from "./Navigator";
@@ -30,7 +27,6 @@ const UpdateProfile = () => {
     imagePublicId: null,
   });
   const [credits, setCredits] = useState(0);
-  const [payments, setPayments] = useState([]);
   const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
 
   const cld = new Cloudinary({ cloud: { cloudName: "dovyqaltq" } });
@@ -86,7 +82,6 @@ const UpdateProfile = () => {
           imagePublicId: extractPublicId(data.image) || null,
         });
         setCredits(data.credits || 0);
-        setPayments(data.payments || []);
         setImagePreviewUrl(data.image || null);
       })
       .catch((error) => {
@@ -114,18 +109,18 @@ const UpdateProfile = () => {
     setIsLoading(true);
 
     try {
-      let publicId = formData.imagePublicId;
+      let imageUrl = formData.imagePublicId;
 
       if (formData.imageFile) {
-        publicId = await uploadToCloudinary(formData.imageFile);
-        setFormData((prev) => ({ ...prev, imagePublicId: extractPublicId(publicId) }));
+        imageUrl = await uploadToCloudinary(formData.imageFile);
+        setFormData((prev) => ({ ...prev, imagePublicId: extractPublicId(imageUrl) }));
         setImagePreviewUrl(null);
       }
 
       const payload = {
         username: formData.username,
         email: formData.email,
-        image: publicId || "",
+        image: imageUrl || "",
         dob: formData.dob || "",
         bio: formData.bio || "",
       };
@@ -153,27 +148,6 @@ const UpdateProfile = () => {
         .resize(auto().gravity(autoGravity()).width(128).height(128))
     : null;
 
-  const formatDate = (dateStr) => {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
-  };
-
-  const getStatusColor = (status) => {
-    switch (status.toLowerCase()) {
-      case "completed":
-        return "bg-green-500";
-      case "pending":
-        return "bg-yellow-500";
-      case "failed":
-        return "bg-red-500";
-      default:
-        return "bg-gray-500";
-    }
-  };
-
   if (!user || !user._id || (isLoading && !formData.username)) {
     return (
       <div className="flex justify-center items-center h-40">
@@ -183,186 +157,119 @@ const UpdateProfile = () => {
   }
 
   return (
-   <div className="px-2 sm:px-4 ">
-      <div className="max-w-7xl mx-auto pb-10">
-                <Navigation />
-        
-        <h1 className="text-3xl font-bold tracking-tight">Account Settings</h1>
-        <p className="text-muted-foreground">Manage your profile, credits, and payment history.</p>
+    <div className="px-2 sm:px-4" >
+          <div className="max-w-7xl mx-auto pb-10">
+            <Navigation />
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-3 space-y-6">
 
-        <Tabs defaultValue="profile" className="space-y-6">
-          <TabsList className="flex gap-2 bg-slate-100 dark:bg-slate-800 p-1 rounded-full">
-            <TabsTrigger
-              value="profile"
-              className="px-4 py-2 rounded-full data-[state=active]:bg-white data-[state=active]:dark:bg-slate-700 data-[state=active]:shadow-sm"
-            >
-              Profile
-            </TabsTrigger>
-            <TabsTrigger
-              value="credits"
-              className="px-4 py-2 rounded-full data-[state=active]:bg-white data-[state=active]:dark:bg-slate-700 data-[state=active]:shadow-sm"
-            >
-              Credits
-            </TabsTrigger>
-            <TabsTrigger
-              value="payments"
-              className="px-4 py-2 rounded-full data-[state=active]:bg-white data-[state=active]:dark:bg-slate-700 data-[state=active]:shadow-sm"
-            >
-              Payment History
-            </TabsTrigger>
-          </TabsList>
+        {/* Profile Card */}
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle>Profile Information</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={onSubmit} className="space-y-8">
+              <div className="flex flex-col items-center sm:flex-row sm:items-start gap-8">
+                <div className="relative">
+                  <Avatar className="h-32 w-32 border-4 border-primary/10">
+                    {cldImage ? (
+                      <AdvancedImage cldImg={cldImage} />
+                    ) : imagePreviewUrl ? (
+                      <AvatarImage src={imagePreviewUrl} alt="Preview" />
+                    ) : (
+                      <AvatarFallback className="text-4xl">
+                        {formData.username?.[0]?.toUpperCase() || "U"}
+                      </AvatarFallback>
+                    )}
+                  </Avatar>
+                  <label
+                    htmlFor="avatar-upload"
+                    className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-2 cursor-pointer hover:bg-primary/90 transition-colors shadow-lg"
+                  >
+                    <CameraIcon className="h-5 w-5" />
+                    <input
+                      id="avatar-upload"
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleImageChange}
+                    />
+                  </label>
+                </div>
 
-          <TabsContent value="profile">
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle>Profile Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={onSubmit} className="space-y-8">
-                  <div className="flex flex-col items-center sm:flex-row sm:items-start gap-8">
-                    <div className="relative">
-                      <Avatar className="h-32 w-32">
-                        {cldImage ? (
-                          <AdvancedImage cldImg={cldImage} />
-                        ) : imagePreviewUrl ? (
-                          <AvatarImage src={imagePreviewUrl} alt="Preview" />
-                        ) : (
-                          <AvatarFallback>{formData.username?.[0]?.toUpperCase() || "U"}</AvatarFallback>
-                        )}
-                      </Avatar>
-                      <label
-                        htmlFor="avatar-upload"
-                        className="absolute bottom-0 right-0 bg-primary text-white rounded-full p-2 cursor-pointer"
-                      >
-                        <CameraIcon className="h-5 w-5" />
-                        <input
-                          id="avatar-upload"
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          onChange={handleImageChange}
-                        />
-                      </label>
-                    </div>
-
-                    <div className="flex-1 space-y-6 w-full">
-                      <div className="space-y-2">
-                        <label htmlFor="username" className="text-sm font-medium">Username</label>
-                        <Input
-                          id="username"
-                          value={formData.username}
-                          onChange={handleChange}
-                          placeholder="johndoe"
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <label htmlFor="email" className="text-sm font-medium">Email</label>
-                        <Input
-                          id="email"
-                          value={formData.email}
-                          onChange={handleChange}
-                          placeholder="john.doe@example.com"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-6 sm:grid-cols-2">
-                    <div className="space-y-2">
-                      <label htmlFor="dob" className="text-sm font-medium">Date of Birth</label>
-                      <Input
-                        id="dob"
-                        type="date"
-                        value={formData.dob}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </div>
-
+                <div className="flex-1 space-y-6 w-full">
                   <div className="space-y-2">
-                    <label htmlFor="bio" className="text-sm font-medium">Bio</label>
-                    <Textarea
-                      id="bio"
-                      value={formData.bio}
+                    <label htmlFor="username" className="text-sm font-medium">Username</label>
+                    <Input
+                      id="username"
+                      value={formData.username}
                       onChange={handleChange}
-                      placeholder="Tell us a little bit about yourself"
-                      className="resize-none min-h-[120px]"
+                      placeholder="johndoe"
+                      className="w-full"
                     />
                   </div>
 
-                  <div className="flex justify-end">
-                    <Button type="submit" disabled={isLoading}>
-                      {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Save Changes
-                    </Button>
+                  <div className="space-y-2">
+                    <label htmlFor="email" className="text-sm font-medium">Email</label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="john.doe@example.com"
+                      className="w-full"
+                    />
                   </div>
-                </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="credits">
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle>Credits Balance</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-semibold text-primary">
-                  Current Balance: {credits} Credits
                 </div>
-                <p className="text-muted-foreground mt-2">
-                  Use credits to access premium features and consultations.
-                </p>
-                <Button variant="brand" className="mt-4">
-                  Add Credits
-                </Button>
-              </CardContent>
-            </Card>
-          </TabsContent>
+              </div>
 
-          <TabsContent value="payments">
-            <Card className="shadow-sm">
-              <CardHeader>
-                <CardTitle>Payment History</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {payments.length === 0 ? (
-                  <p className="text-muted-foreground">No payment history available.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Date</TableHead>
-                        <TableHead>Plan</TableHead>
-                        <TableHead>Amount</TableHead>
-                        <TableHead>Credits</TableHead>
-                        <TableHead>Method</TableHead>
-                        <TableHead>Status</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {payments.map((payment, index) => (
-                        <TableRow key={payment.molliePaymentId || index}>
-                          <TableCell>{formatDate(payment.createdAt)}</TableCell>
-                          <TableCell>{payment.planName || "N/A"}</TableCell>
-                          <TableCell>€{payment.amount.toFixed(2)}</TableCell>
-                          <TableCell>{payment.creditsPurchased}</TableCell>
-                          <TableCell className="capitalize">{payment.paymentMethod.replace("_", " ")}</TableCell>
-                          <TableCell>
-                            <Badge className={getStatusColor(payment.status)}>{payment.status}</Badge>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <label htmlFor="dob" className="text-sm font-medium">Date of Birth</label>
+                  <Input
+                    id="dob"
+                    type="date"
+                    value={formData.dob}
+                    onChange={handleChange}
+                    className="w-full"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label htmlFor="bio" className="text-sm font-medium">Bio</label>
+                <Textarea
+                  id="bio"
+                  value={formData.bio}
+                  onChange={handleChange}
+                  placeholder="Tell us a little bit about yourself"
+                  className="resize-none min-h-[120px] w-full"
+                />
+              </div>
+
+              <div className="flex justify-end gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    // Reset form to original values
+                    window.location.reload();
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={isLoading}>
+                  {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save Changes
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </div>
+    </div></div>
   );
 };
 

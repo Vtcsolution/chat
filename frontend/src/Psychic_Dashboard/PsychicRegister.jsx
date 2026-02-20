@@ -20,7 +20,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePsychicAuth } from "@/context/PsychicAuthContext";
-import { Loader2, Upload, X, Sparkles, UserPlus, Mail, Lock, DollarSign, User, Award, Globe, Shield } from "lucide-react";
+import { 
+  Loader2, Upload, X, Sparkles, UserPlus, Mail, Lock, 
+  DollarSign, User, Award, Globe, Shield, BookOpen, Star,
+  Heart, Briefcase, Moon, Sun, Compass, Sparkle, Brain,
+  Eye, Cloud
+} from "lucide-react";
 import { toast } from "sonner";
 
 // Define the same color scheme
@@ -36,6 +41,19 @@ const colors = {
   background: "#F5F3EB",   // Soft ivory
 };
 
+// Define psychic categories with icons
+const psychicCategories = [
+  { value: "Tarot Reading", label: "Tarot Reading", icon: <Sparkle className="h-4 w-4" /> },
+  { value: "Astrology", label: "Astrology", icon: <Moon className="h-4 w-4" /> },
+  { value: "Reading", label: "Reading", icon: <BookOpen className="h-4 w-4" /> },
+  { value: "Love & Relationships", label: "Love & Relationships", icon: <Heart className="h-4 w-4" /> },
+  { value: "Career & Finance", label: "Career & Finance", icon: <Briefcase className="h-4 w-4" /> },
+  { value: "Spiritual Guidance", label: "Spiritual Guidance", icon: <Compass className="h-4 w-4" /> },
+  { value: "Numerology", label: "Numerology", icon: <Brain className="h-4 w-4" /> },
+  { value: "Clairvoyant", label: "Clairvoyant", icon: <Eye className="h-4 w-4" /> },
+  { value: "Dream Analysis", label: "Dream Analysis", icon: <Cloud className="h-4 w-4" /> },
+];
+
 export default function PsychicRegister() {
   const { register, loading } = usePsychicAuth();
   const navigate = useNavigate();
@@ -48,6 +66,7 @@ export default function PsychicRegister() {
     ratePerMin: "",
     bio: "",
     gender: "",
+    category: "", // New category field
     image: "",
   });
 
@@ -62,6 +81,11 @@ export default function PsychicRegister() {
 
   const handleGenderChange = (value) => {
     setFormData({ ...formData, gender: value });
+  };
+
+  // New handler for category selection
+  const handleCategoryChange = (value) => {
+    setFormData({ ...formData, category: value });
   };
 
   // Cloudinary upload function
@@ -112,6 +136,12 @@ export default function PsychicRegister() {
       return;
     }
 
+    // Validate category is selected
+    if (!formData.category) {
+      toast.error("Please select your primary category");
+      return;
+    }
+
     if (parseFloat(formData.ratePerMin) < 0.99) {
       toast.error("Minimum rate is $0.99 per minute");
       return;
@@ -133,6 +163,7 @@ export default function PsychicRegister() {
         ratePerMin: formData.ratePerMin,
         bio: formData.bio,
         gender: formData.gender,
+        category: formData.category, // Include category
         image: finalImageUrl
       };
 
@@ -170,14 +201,21 @@ export default function PsychicRegister() {
       </div>
 
       <div className="w-full max-w-4xl z-10">
-        {/* Header */}
-       
+        {/* Header with mystical elements */}
+        <div className="text-center mb-8">
+          <div className="inline-block p-4 rounded-full mb-4" style={{ backgroundColor: colors.primary + '10' }}>
+            <Sparkles className="h-12 w-12" style={{ color: colors.secondary }} />
+          </div>
+          <h1 className="text-4xl font-bold mb-2" style={{ color: colors.primary }}>
+            Join Our Circle of Light
+          </h1>
+          <p className="text-lg" style={{ color: colors.bgLight }}>
+            Share your gifts with those seeking guidance
+          </p>
+        </div>
 
         <div className="grid md:grid-cols-1 gap-8">
-          {/* Left Column - Information */}
-        
-
-          {/* Right Column - Registration Form */}
+          {/* Registration Form */}
           <Card className="border-0 shadow-xl overflow-hidden">
             <CardHeader className="pb-6 border-b"
               style={{ borderColor: colors.secondary + '20' }}>
@@ -369,6 +407,36 @@ export default function PsychicRegister() {
                       }}
                     />
                   </div>
+                </div>
+
+                {/* NEW: Category Selection */}
+                <div className="space-y-2">
+                  <Label className="flex items-center gap-2 font-bold"
+                    style={{ color: colors.primary }}>
+                    <Star className="h-4 w-4" style={{ color: colors.secondary }} />
+                    Primary Category *
+                  </Label>
+                  <Select onValueChange={handleCategoryChange} required>
+                    <SelectTrigger style={{ 
+                      borderColor: colors.secondary + '30',
+                      color: colors.primary
+                    }}>
+                      <SelectValue placeholder="Select your primary category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {psychicCategories.map((category) => (
+                        <SelectItem key={category.value} value={category.value}>
+                          <div className="flex items-center gap-2">
+                            <span style={{ color: colors.secondary }}>{category.icon}</span>
+                            <span>{category.label}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs mt-1" style={{ color: colors.bgLight }}>
+                    Choose the category that best describes your primary gift
+                  </p>
                 </div>
 
                 {/* Rate and Gender */}

@@ -297,21 +297,21 @@ export default function PsychicLogin() {
               </div>
             </CardContent>
 
-            <CardFooter className="pt-6 border-t"
-              style={{ borderColor: colors.secondary + '20' }}>
-              <div className="text-center w-full">
-                <p className="text-sm" style={{ color: colors.bgLight }}>
-                  Need help signing in?{" "}
-                  <a 
-                    href="mailto:support@spiritueelchatten.nl"
-                    className="font-bold hover:underline transition-all duration-200 hover:scale-105 inline-block"
-                    style={{ color: colors.secondary }}
-                  >
-                    Contact Support
-                  </a>
-                </p>
-              </div>
-            </CardFooter>
+           <CardFooter className="pt-6 border-t"
+  style={{ borderColor: colors.secondary + '20' }}>
+  <div className="text-center w-full">
+    <p className="text-sm" style={{ color: colors.bgLight }}>
+      Already have an account?{" "}
+      <Link 
+        to="/psychic/register"
+        className="font-bold hover:underline transition-all duration-200 hover:scale-105 inline-block"
+        style={{ color: colors.secondary }}
+      >
+        Sign In
+      </Link>
+    </p>
+  </div>
+</CardFooter>
           </Card>
         </div>
 

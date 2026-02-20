@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+// src/pages/user/AudioCallPage.jsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
-import { Phone, PhoneOff, Clock, User, MessageCircle, Volume2, Mic, MicOff, Video, VideoOff, X, Check, AlertCircle } from 'lucide-react';
+import { Phone, PhoneOff, Clock, User, MessageCircle, Volume2, Mic, MicOff, Video, VideoOff, X, AlertCircle, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -8,7 +9,7 @@ import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import axios from 'axios';
 import io from 'socket.io-client';
-import twilioService from '@/services/twilioService'; // ✅ ADD THIS IMPORT
+import twilioService from '@/services/twilioService';
 
 const AudioCallPage = () => {
   const { callSessionId } = useParams();
@@ -17,7 +18,7 @@ const AudioCallPage = () => {
 
   // State from navigation or fetch
   const [callData, setCallData] = useState(location.state || {});
-  const [status, setStatus] = useState(location.state?.status || 'initiated');
+  const [status, setStatus] = useState(location.state?.status || 'loading');
   const [timer, setTimer] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(false);
@@ -25,17 +26,31 @@ const AudioCallPage = () => {
   const [twilioToken, setTwilioToken] = useState('');
   const [roomName, setRoomName] = useState('');
   const [expiresAt, setExpiresAt] = useState(null);
-  const [timeLeft, setTimeLeft] = useState(30); // 30 seconds for psychic to accept
+  const [timeLeft, setTimeLeft] = useState(30);
   const [creditsUsed, setCreditsUsed] = useState(0);
   const [currentCredits, setCurrentCredits] = useState(0);
   const [isFreeSession, setIsFreeSession] = useState(false);
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [lastServerSync, setLastServerSync] = useState(Date.now());
+  const [syncStatus, setSyncStatus] = useState('synced');
+  const [userId, setUserId] = useState(null);
+  const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
 
   // Refs
   const socketRef = useRef(null);
-  const timerRef = useRef(null);
   const countdownRef = useRef(null);
   const audioPermissionRef = useRef(null);
+  const callSessionIdRef = useRef(callSessionId || location.state?.callSessionId);
+  const callRequestIdRef = useRef(location.state?.callRequestId);
+  const syncIntervalRef = useRef(null);
+  const verifyIntervalRef = useRef(null);
+  const pollIntervalRef = useRef(null);
+  const initializedRef = useRef(false);
+  const reconnectAttemptsRef = useRef(0);
+  const twilioConnectedRef = useRef(false);
 
   // Color scheme
   const colors = {
@@ -48,6 +63,7 @@ const AudioCallPage = () => {
 
   // Status colors
   const statusColors = {
+    loading: 'bg-gray-500',
     initiated: 'bg-yellow-500',
     ringing: 'bg-blue-500',
     active: 'bg-green-500',
@@ -55,53 +71,465 @@ const AudioCallPage = () => {
     rejected: 'bg-red-500',
     cancelled: 'bg-gray-500',
     completed: 'bg-purple-500',
-    failed: 'bg-red-500'
+    failed: 'bg-red-500',
+    expired: 'bg-red-500'
   };
 
-  // Initialize socket connection
-  useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    const userId = callData.user?._id;
+  // API instance with auth
+  const api = axios.create({
+    baseURL: import.meta.env.VITE_BASE_URL || 'http://localhost:5001',
+    timeout: 10000,
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    withCredentials: true
+  });
 
-    if (!userId) {
-      toast.error("User not found");
-      navigate('/');
+  // Add token to requests
+  api.interceptors.request.use(config => {
+    const token = localStorage.getItem('accessToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  });
+
+  // Get user ID from token
+  const getUserIdFromToken = useCallback(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) return null;
+    
+    try {
+      const base64Url = token.split('.')[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const jsonPayload = decodeURIComponent(atob(base64).split('').map(c => {
+        return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+      }).join(''));
+      
+      const decoded = JSON.parse(jsonPayload);
+      return decoded.id || decoded.userId || decoded.sub;
+    } catch (error) {
+      console.error('Error decoding token:', error);
+      return null;
+    }
+  }, []);
+
+  // Clean up all intervals
+  const stopAllIntervals = useCallback(() => {
+    console.log('🛑 Stopping all intervals');
+    if (countdownRef.current) {
+      clearInterval(countdownRef.current);
+      countdownRef.current = null;
+    }
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+    if (verifyIntervalRef.current) {
+      clearInterval(verifyIntervalRef.current);
+      verifyIntervalRef.current = null;
+    }
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  // Clean up Twilio resources
+  const cleanupTwilio = useCallback(() => {
+    console.log('🧹 Cleaning up Twilio');
+    try {
+      twilioService.endCall();
+      twilioService.cleanup();
+    } catch (error) {
+      console.error('Error cleaning up Twilio:', error);
+    }
+    twilioConnectedRef.current = false;
+    removeAudioPermissionHandler();
+    setIsAudioPlaying(false);
+  }, []);
+
+  // Remove audio permission handler
+  const removeAudioPermissionHandler = useCallback(() => {
+    if (audioPermissionRef.current) {
+      document.removeEventListener('click', audioPermissionRef.current);
+      audioPermissionRef.current = null;
+    }
+  }, []);
+
+  // Handle call end
+  const handleCallEnd = useCallback((data) => {
+    console.log('🛑 Handling call end with data:', data);
+    
+    stopAllIntervals();
+    
+    try {
+      twilioService.endCall();
+      twilioService.cleanup();
+    } catch (error) {
+      console.error('Error cleaning up Twilio:', error);
+    }
+    
+    removeAudioPermissionHandler();
+    
+    let endMessage = 'Call ended';
+    let endStatus = 'completed';
+    let finalCredits = data.creditsUsed || 0;
+    
+    if (data.endReason === 'ended_by_psychic' || data.endedBy === 'psychic') {
+      endMessage = 'Psychic ended the call';
+    } else if (data.endReason === 'ended_by_user' || data.endedBy === 'user') {
+      endMessage = 'You ended the call';
+    } else if (data.endReason === 'insufficient_credits') {
+      endMessage = 'Call ended due to insufficient credits';
+      endStatus = 'failed';
+    } else if (data.endReason === 'user_disconnected' || data.endReason === 'psychic_disconnected') {
+      endMessage = 'Call ended - Connection lost';
+      endStatus = 'failed';
+    } else if (data.endReason === 'expired') {
+      endMessage = 'Call request expired';
+      endStatus = 'expired';
+    } else if (data.endReason === 'cancelled') {
+      endMessage = 'Call cancelled';
+      endStatus = 'cancelled';
+    } else if (data.endReason === 'rejected') {
+      endMessage = 'Call rejected';
+      endStatus = 'rejected';
+    }
+    
+    setStatus(endStatus);
+    setCreditsUsed(finalCredits);
+    
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
+    
+    toast.info(endMessage);
+    
+    setTimeout(() => {
+      if (endStatus === 'failed' && data.endReason === 'insufficient_credits') {
+        navigate('/wallet');
+      } else {
+        navigate('/');
+      }
+    }, 3000);
+    
+  }, [stopAllIntervals, removeAudioPermissionHandler, navigate]);
+
+  // Poll timer from server
+  // In AudioCallPage.jsx, update the startTimerPolling function:
+
+// Poll timer from server
+const startTimerPolling = useCallback(() => {
+  if (pollIntervalRef.current) {
+    clearInterval(pollIntervalRef.current);
+  }
+  
+  console.log('⏱️ Starting timer polling from server');
+  
+  // Use a shorter interval for smoother updates
+  pollIntervalRef.current = setInterval(async () => {
+    if (!callSessionIdRef.current || status !== 'active') {
       return;
     }
+    
+    try {
+      const response = await api.get(`/api/calls/sync-timer/${callSessionIdRef.current}`);
+      
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        if (data.elapsedSeconds !== undefined) {
+          // Force a state update even if the value is the same
+          // This ensures the component re-renders
+          setTimer(prevTimer => {
+            if (prevTimer !== data.elapsedSeconds) {
+              console.log(`⏱️ Timer updated: ${prevTimer} -> ${data.elapsedSeconds}`);
+              return data.elapsedSeconds;
+            }
+            return prevTimer;
+          });
+          
+          setLastServerSync(Date.now());
+          setSyncStatus('synced');
+        }
+        
+        if (data.creditsUsed !== undefined) {
+          setCreditsUsed(data.creditsUsed);
+        }
+        
+        // Check if call has ended
+        if (data.status === 'ended' || data.status === 'completed') {
+          console.log('⚠️ Server reports call ended during polling');
+          handleCallEnd({
+            callSessionId: callSessionIdRef.current,
+            endReason: data.endReason || 'call_ended',
+            endedBy: data.endedBy || 'unknown',
+            creditsUsed: data.creditsUsed || creditsUsed
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error polling timer:', error);
+      setSyncStatus('error');
+      
+      if (error.response?.status === 404) {
+        handleCallEnd({
+          callSessionId: callSessionIdRef.current,
+          endReason: 'call_ended',
+          creditsUsed
+        });
+      }
+    }
+  }, 1000); // Poll every second
+  
+}, [api, status, creditsUsed, handleCallEnd]);
+  // Verify call status
+  const verifyCallStatus = useCallback(async () => {
+    if (!callSessionIdRef.current || status === 'completed' || status === 'ended' || status === 'failed') {
+      return;
+    }
+    
+    try {
+      const response = await api.get(`/api/calls/status/${callSessionIdRef.current}`);
+      
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        if (data.status === 'ended' || data.status === 'completed') {
+          console.log('⚠️ Backend reports call ended, syncing frontend');
+          
+          handleCallEnd({
+            callSessionId: callSessionIdRef.current,
+            endReason: data.endReason || 'call_ended',
+            endedBy: data.endedBy || 'unknown',
+            creditsUsed: data.creditsUsed || creditsUsed
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error verifying call status:', error);
+      
+      if (error.response?.status === 404) {
+        handleCallEnd({
+          callSessionId: callSessionIdRef.current,
+          endReason: 'call_ended',
+          endedBy: 'unknown',
+          creditsUsed
+        });
+      }
+    }
+  }, [api, creditsUsed, handleCallEnd, status]);
 
-    // Connect to audio-calls namespace
+  // Fetch call details with token for reconnection
+  const fetchCallDetails = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const token = localStorage.getItem('accessToken');
+      if (!token) {
+        navigate('/login');
+        return;
+      }
+
+      let response;
+      let sessionId = callSessionIdRef.current || callSessionId;
+      
+      if (sessionId) {
+        // Try to get call status which includes tokens
+        response = await api.get(`/api/calls/status/${sessionId}`);
+        
+        if (response.data.success) {
+          const data = response.data.data;
+          
+          setStatus(data.status || 'active');
+          setTimer(data.elapsedSeconds || 0);
+          setCreditsUsed(data.creditsUsed || 0);
+          
+          if (data.roomName) {
+            setRoomName(data.roomName);
+          }
+          
+          // CRITICAL: Get token from response for reconnection
+          if (data.participantTokens?.user) {
+            setTwilioToken(data.participantTokens.user);
+          }
+          
+          if (data.psychicId) {
+            setCallData(prev => ({
+              ...prev,
+              psychic: data.psychicId,
+              callSessionId: data._id
+            }));
+          }
+          
+          callSessionIdRef.current = data._id;
+          
+          // If call is in progress, start timer polling
+          if (data.status === 'in-progress' || data.status === 'active') {
+            setStatus('active');
+            startTimerPolling();
+            
+            // Try to reconnect to Twilio if we have token and room name
+            if (data.participantTokens?.user && data.roomName && !twilioConnectedRef.current) {
+              setTimeout(() => {
+                connectToTwilioCall(data.participantTokens.user, data.psychicId?._id);
+              }, 1000);
+            }
+          }
+        }
+      } else {
+        // Try to get active call
+        response = await api.get('/api/calls/active');
+        
+        if (response.data.success && response.data.data) {
+          const data = response.data.data;
+          
+          if (data.activeSession) {
+            callSessionIdRef.current = data.activeSession._id;
+            setStatus(data.activeSession.status || 'active');
+            setTimer(data.elapsedSeconds || 0);
+            setCreditsUsed(data.creditsUsed || 0);
+            
+            if (data.activeSession.roomName) {
+              setRoomName(data.activeSession.roomName);
+            }
+            
+            if (data.activeSession.participantTokens?.user) {
+              setTwilioToken(data.activeSession.participantTokens.user);
+            }
+            
+            setCallData(prev => ({
+              ...prev,
+              psychic: data.activeSession.psychicId,
+              callSessionId: data.activeSession._id,
+              roomName: data.activeSession.roomName
+            }));
+            
+            if (data.activeSession.status === 'in-progress' || data.activeSession.status === 'active') {
+              setStatus('active');
+              startTimerPolling();
+              
+              if (data.activeSession.participantTokens?.user && data.activeSession.roomName && !twilioConnectedRef.current) {
+                setTimeout(() => {
+                  connectToTwilioCall(data.activeSession.participantTokens.user, data.activeSession.psychicId?._id);
+                }, 1000);
+              }
+            }
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error fetching call details:', error);
+      setError(error.response?.data?.message || 'Failed to load call details');
+      
+      if (error.response?.status === 401) {
+        localStorage.removeItem('accessToken');
+        navigate('/login');
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }, [api, navigate, callSessionId, startTimerPolling]);
+
+  // Initialize socket connection with persistence
+  const initializeSocket = useCallback(() => {
+    const token = localStorage.getItem('accessToken');
+    const uid = userId || getUserIdFromToken();
+
+    if (!uid || !token) {
+      console.log('❌ Missing user credentials');
+      return null;
+    }
+
+    console.log('🔌 Initializing socket connection', { uid, callSessionId: callSessionIdRef.current });
+
+    // Disconnect existing socket if any
+    if (socketRef.current) {
+      socketRef.current.removeAllListeners();
+      socketRef.current.disconnect();
+    }
+
     const socket = io(`${import.meta.env.VITE_BASE_URL}/audio-calls`, {
       auth: { token },
       transports: ['websocket', 'polling'],
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 20, // Increased attempts
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+      query: { token, userId: uid, callSessionId: callSessionIdRef.current }
     });
 
     socketRef.current = socket;
 
-    // Register as user
-    socket.emit('user-register', userId);
-
-    // Socket event handlers
     socket.on('connect', () => {
       console.log('✅ Connected to audio call socket');
-      joinCallRoom();
+      setSocketConnected(true);
+      reconnectAttemptsRef.current = 0;
+      
+      // Register user
+      socket.emit('user-register', uid);
+      
+      // Join room if we have it
+      if (roomName) {
+        socket.emit('join-room', roomName);
+        setHasJoinedRoom(true);
+      } else if (callData.roomName) {
+        socket.emit('join-room', callData.roomName);
+        setHasJoinedRoom(true);
+      }
     });
 
+    socket.on('disconnect', (reason) => {
+      console.log('❌ Disconnected from audio call socket:', reason);
+      setSocketConnected(false);
+      setHasJoinedRoom(false);
+      
+      // Don't show error for expected disconnections
+      if (reason !== 'io client disconnect' && reason !== 'transport close') {
+        console.log('🔄 Will attempt to reconnect automatically');
+      }
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('❌ Socket connection error:', error);
+      reconnectAttemptsRef.current++;
+      
+      if (reconnectAttemptsRef.current > 5) {
+        toast.error('Connection issues. Trying to reconnect...');
+      }
+      
+      // Try to refresh token
+      if (error.message.includes('auth') || error.message.includes('token')) {
+        const newToken = localStorage.getItem('accessToken');
+        if (newToken && newToken !== token) {
+          socket.auth = { token: newToken };
+        }
+      }
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log(`🔄 Socket reconnected after ${attemptNumber} attempts`);
+      setSocketConnected(true);
+      
+      // Re-register and re-join room
+      socket.emit('user-register', uid);
+      if (roomName) {
+        socket.emit('join-room', roomName);
+      }
+    });
+
+    // Rest of your socket event handlers remain the same...
     socket.on('call-accepted', (data) => {
       console.log('✅ Call accepted by psychic:', data);
 
-      // Validate token
       if (!data.token || data.token.includes('dummy_token')) {
         console.error('❌ INVALID TOKEN RECEIVED:', data.token);
         toast.error('Invalid audio connection. Please try again.');
-        return;
-      }
-
-      // Check if token is a proper JWT
-      if (!data.token.startsWith('eyJ')) {
-        console.error('❌ TOKEN NOT A VALID JWT:', data.token?.substring(0, 50));
-        toast.error('Invalid audio connection format.');
         return;
       }
 
@@ -113,42 +541,61 @@ const AudioCallPage = () => {
         callSessionId: data.callSessionId,
         psychic: data.psychic
       }));
+      callSessionIdRef.current = data.callSessionId;
 
-      // Connect to Twilio Video
       connectToTwilioCall(data.token, data.psychic?._id);
       toast.success(`Call accepted by ${data.psychic?.name}`);
     });
 
     socket.on('call-rejected', (data) => {
       console.log('❌ Call rejected:', data);
-      setStatus('rejected');
-      cleanupTwilio();
-      toast.error(`Call rejected: ${data.reason || 'Psychic declined the call'}`);
-
-      // Auto navigate back after 3 seconds
-      setTimeout(() => {
-        navigate('/');
-      }, 3000);
-    });
-
-    socket.on('call-cancelled', (data) => {
-      console.log('Call cancelled by user:', data);
-      setStatus('cancelled');
-      cleanupTwilio();
-      toast.info('Call cancelled');
+      handleCallEnd({
+        callSessionId: callSessionIdRef.current,
+        callRequestId: callRequestIdRef.current,
+        endReason: 'rejected',
+        endedBy: 'psychic',
+        creditsUsed: 0
+      });
     });
 
     socket.on('call-started', (data) => {
       console.log('🎉 Call started:', data);
       setStatus('active');
-      startCallTimer();
+      syncTimerWithServer();
+      startTimerPolling();
       setIsAudioPlaying(true);
     });
 
     socket.on('timer-started', (data) => {
       console.log('⏱️ Timer started:', data);
       setStatus('active');
-      startCallTimer();
+      syncTimerWithServer();
+      startTimerPolling();
+    });
+
+    socket.on('timer-sync', (data) => {
+      console.log('⏱️ Timer sync event:', data);
+      if (data.elapsedSeconds !== undefined) {
+        setTimer(data.elapsedSeconds);
+        setLastServerSync(Date.now());
+      }
+    });
+
+    socket.on('timer-stopped', (data) => {
+      console.log('⏱️ TIMER STOPPED EVENT:', data);
+      
+      if (data.callSessionId === callSessionIdRef.current) {
+        console.log('⏱️ Stopping timer polling by direct command');
+        stopAllIntervals();
+        
+        if (data.finalTime !== undefined) {
+          setTimer(data.finalTime);
+        }
+        
+        if (data.status) {
+          setStatus(data.status);
+        }
+      }
     });
 
     socket.on('credits-updated', (data) => {
@@ -161,79 +608,78 @@ const AudioCallPage = () => {
       }
     });
 
-    socket.on('free-minute-ending', (data) => {
-      console.log('⚠️ Free minute ending:', data);
-      toast.warning('Your free minute is ending. Call will continue using credits.');
-    });
-
-    socket.on('call-ended-insufficient-credits', (data) => {
-      console.log('❌ Call ended due to insufficient credits:', data);
-      setStatus('failed');
-      cleanupTwilio();
-      toast.error('Call ended due to insufficient credits');
-
-      setTimeout(() => {
-        navigate('/wallet');
-      }, 3000);
-    });
-
-    socket.on('call-expired', (data) => {
-      console.log('⏰ Call expired:', data);
-      setStatus('failed');
-      cleanupTwilio();
-      toast.error('Call request expired. Psychic did not respond in time.');
-
-      setTimeout(() => {
-        navigate('/');
-      }, 3000);
-    });
-
-    // Twilio Device events
-    socket.on('twilio-device-ready', (data) => {
-      console.log('🎯 Twilio Device ready:', data);
-    });
-
-    socket.on('twilio-call-connected', (data) => {
-      console.log('✅ Twilio call connected:', data);
-      setStatus('active');
-      startCallTimer();
-    });
-
     socket.on('call-completed', (data) => {
-      console.log('📞 Call ended:', data);
-      setStatus('completed');
-      setCreditsUsed(data.creditsUsed || 0);
-      stopCallTimer();
-
-      // Clean up Twilio
-      cleanupTwilio();
-
-      toast.info(`Call ended. Credits used: ${data.creditsUsed || 0}`);
-
-      // Show summary for 5 seconds then navigate
-      setTimeout(() => {
-        navigate('/');
-      }, 5000);
+      console.log('📞 Call completed:', data);
+      
+      const sessionMatches = data.callSessionId === callSessionIdRef.current || 
+                            data.callRequestId === callRequestIdRef.current;
+      
+      if (sessionMatches) {
+        handleCallEnd(data);
+      }
     });
 
-    // Cleanup on unmount
-    return () => {
-      if (socketRef.current) {
-        socketRef.current.disconnect();
+    socket.on('call-ended', (data) => {
+      console.log('📞 Call ended:', data);
+      
+      const sessionMatches = data.callSessionId === callSessionIdRef.current || 
+                            data.callRequestId === callRequestIdRef.current;
+      
+      if (sessionMatches) {
+        handleCallEnd(data);
       }
-      cleanupTwilio();
-      stopTimers();
-      removeAudioPermissionHandler();
-    };
-  }, [callSessionId, navigate]);
+    });
 
-  // Join call room
-  const joinCallRoom = () => {
-    if (socketRef.current && callData.roomName) {
-      socketRef.current.emit('join-room', callData.roomName);
-      setRoomName(callData.roomName);
+    socket.on('room-closed', (data) => {
+      console.log('🚪 Room closed:', data);
+      
+      if (data.roomName === roomName || data.roomName === callData.roomName) {
+        handleCallEnd({
+          callSessionId: callSessionIdRef.current,
+          endReason: 'room_closed',
+          creditsUsed
+        });
+      }
+    });
+
+    return socket;
+  }, [userId, roomName, callData.roomName, handleCallEnd, creditsUsed, getUserIdFromToken, stopAllIntervals, startTimerPolling]);
+
+  // Sync timer with server
+  const syncTimerWithServer = useCallback(async () => {
+    if (!callSessionIdRef.current || status !== 'active') return;
+    
+    try {
+      setSyncStatus('syncing');
+      
+      const response = await api.get(`/api/calls/sync-timer/${callSessionIdRef.current}`);
+      
+      if (response.data.success) {
+        const data = response.data.data;
+        
+        if (data.elapsedSeconds !== undefined) {
+          setTimer(data.elapsedSeconds);
+          setLastServerSync(Date.now());
+          setSyncStatus('synced');
+        }
+        
+        if (data.creditsUsed !== undefined) {
+          setCreditsUsed(data.creditsUsed);
+        }
+      }
+    } catch (error) {
+      console.error('Error syncing timer:', error);
+      setSyncStatus('error');
+      
+      if (error.response?.status === 404) {
+        handleCallEnd({
+          callSessionId: callSessionIdRef.current,
+          endReason: 'call_ended',
+          creditsUsed
+        });
+      }
     }
-  };
+  }, [api, status, creditsUsed, handleCallEnd]);
 
   // Connect to Twilio call
   const connectToTwilioCall = async (token, psychicId) => {
@@ -241,134 +687,98 @@ const AudioCallPage = () => {
       toast.error('Missing connection details');
       return;
     }
+    
+    if (twilioConnectedRef.current) {
+      console.log('Already connected to Twilio');
+      return;
+    }
+    
     setIsConnecting(true);
 
     try {
       console.log('🎯 User connecting to audio room...');
+      
+      const targetRoomName = roomName || callData.roomName;
 
-      // Get room name from somewhere (should be in callData)
-      const roomName = callData.roomName || roomName; // You need to have roomName
-
-      if (!roomName) {
+      if (!targetRoomName) {
         throw new Error('Room name not found');
       }
 
-      // 1. Initialize Twilio Video SDK
       await twilioService.initialize();
+      await twilioService.joinRoom(token, targetRoomName);
+      
+      twilioConnectedRef.current = true;
 
-      // 2. JOIN THE ROOM (not "makeCall")
-      await twilioService.joinRoom(token, roomName);
-
-      // 3. Set up audio playback permission handler
       setupAudioPermissionHandler();
 
-      // 4. Notify socket that call has started
-      if (socketRef.current) {
+      if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit('call-started', {
-          callSessionId: callSessionId || callData.callSessionId,
-          roomName: roomName
+          callSessionId: callSessionIdRef.current,
+          roomName: targetRoomName
         });
       }
 
       setIsConnecting(false);
       setStatus('active');
-      startCallTimer();
+      
+      await syncTimerWithServer();
+      startTimerPolling();
 
     } catch (error) {
       console.error('❌ Error connecting to Twilio:', error);
-      toast.error('Failed to connect to audio call');
+      
+      let errorMessage = 'Failed to connect to audio call';
+      if (error.code === 20101) errorMessage = 'Invalid access token';
+      else if (error.code === 53113) errorMessage = 'Room not found';
+      else if (error.code === 53405) errorMessage = 'Room is full';
+      
+      toast.error(errorMessage);
       setIsConnecting(false);
       setStatus('failed');
+      twilioConnectedRef.current = false;
     }
   };
 
-  // Set up audio playback permission handler
+  // Set up audio permission handler
   const setupAudioPermissionHandler = () => {
-    // Remove existing handler
     removeAudioPermissionHandler();
 
-    // Create new handler for browsers blocking auto-play
-    audioPermissionRef.current = () => {
-      const status = twilioService.getStatus();
+    audioPermissionRef.current = async () => {
       console.log('🎧 Audio permission click handler triggered');
-
-      if (status.audio === 'ready') {
-        const audioEl = document.getElementById('twilio-remote-audio');
-        if (audioEl) {
-          audioEl.play().then(() => {
-            console.log('✅ Audio playback started via user interaction');
-            setIsAudioPlaying(true);
-            removeAudioPermissionHandler();
-          }).catch(e => {
-            console.log('⚠️ Audio play failed:', e);
-          });
+      
+      try {
+        const audioElements = document.querySelectorAll('audio');
+        let playedAny = false;
+        
+        for (const audio of audioElements) {
+          if (audio.paused) {
+            try {
+              await audio.play();
+              playedAny = true;
+              console.log('✅ Played audio element');
+            } catch (playError) {
+              console.log('⚠️ Could not play audio:', playError);
+            }
+          }
         }
+        
+        if (playedAny) {
+          setIsAudioPlaying(true);
+          removeAudioPermissionHandler();
+          toast.success('Audio enabled!');
+        }
+      } catch (error) {
+        console.error('Error in audio handler:', error);
       }
     };
 
-    // Add click handler
     document.addEventListener('click', audioPermissionRef.current);
-    console.log('🎧 Added audio permission click handler');
-  };
 
-  // Remove audio permission handler
-  const removeAudioPermissionHandler = () => {
-    if (audioPermissionRef.current) {
-      document.removeEventListener('click', audioPermissionRef.current);
-      audioPermissionRef.current = null;
-    }
-  };
-
-  // Clean up Twilio resources
-  const cleanupTwilio = () => {
-    twilioService.endCall();
-    twilioService.cleanup();
-    removeAudioPermissionHandler();
-    setIsAudioPlaying(false);
-  };
-
-  // Start call timer
-  const startCallTimer = () => {
-    stopTimers();
-
-    timerRef.current = setInterval(() => {
-      setTimer(prev => prev + 1);
-    }, 1000);
-  };
-
-  // Start countdown for psychic response
-  const startCountdown = () => {
-    if (expiresAt) {
-      const endTime = new Date(expiresAt).getTime();
-      countdownRef.current = setInterval(() => {
-        const now = new Date().getTime();
-        const remaining = Math.max(0, Math.floor((endTime - now) / 1000));
-        setTimeLeft(remaining);
-
-        if (remaining <= 0) {
-          clearInterval(countdownRef.current);
-          setStatus('failed');
-          cleanupTwilio();
-          toast.error('Psychic did not respond in time');
-
-          setTimeout(() => {
-            navigate('/');
-          }, 3000);
-        }
-      }, 1000);
-    }
-  };
-
-  // Stop all timers
-  const stopTimers = () => {
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-      countdownRef.current = null;
-    }
+    setTimeout(() => {
+      if (!isAudioPlaying && status === 'active') {
+        toast.info('Click anywhere on the page to enable audio');
+      }
+    }, 2000);
   };
 
   // Cancel call
@@ -377,36 +787,23 @@ const AudioCallPage = () => {
       toast.error('Call request ID not found');
       return;
     }
+    
     try {
-      const token = localStorage.getItem('accessToken');
+      await api.post(`/api/calls/cancel/${callData.callRequestId}`, {});
 
-      await axios.post(
-        `${import.meta.env.VITE_BASE_URL}/api/calls/cancel/${callData.callRequestId}`,
-        {},
-        {
-          headers: {
-            Authorization: `Bearer ${token}`
-          },
-          withCredentials: true
-        }
-      );
-
-      // Clean up Twilio
-      cleanupTwilio();
-
-      // Also emit socket event
       if (socketRef.current) {
         socketRef.current.emit('cancel-call', {
           callRequestId: callData.callRequestId
         });
       }
 
-      setStatus('cancelled');
-      toast.info('Call cancelled');
-
-      setTimeout(() => {
-        navigate('/');
-      }, 2000);
+      handleCallEnd({
+        callSessionId: callSessionIdRef.current,
+        callRequestId: callRequestIdRef.current,
+        endReason: 'cancelled',
+        endedBy: 'user',
+        creditsUsed: 0
+      });
 
     } catch (error) {
       console.error('Error cancelling call:', error);
@@ -416,46 +813,102 @@ const AudioCallPage = () => {
 
   // End call
   const endCall = async () => {
-    if (!callSessionId && !callData.callSessionId) {
+    const sessionId = callSessionIdRef.current;
+    if (!sessionId) {
       toast.error('Call session ID not found');
       return;
     }
 
-    // 1. End Twilio call first
-    cleanupTwilio();
-
-    // 2. Emit socket event
-    if (socketRef.current) {
-      const sessionId = callSessionId || callData.callSessionId;
-      socketRef.current.emit('call-ended', {
+    try {
+      console.log('🛑 User ending call:', sessionId);
+      
+      stopAllIntervals();
+      
+      try {
+        twilioService.endCall();
+        twilioService.cleanup();
+      } catch (twilioError) {
+        console.error('Error cleaning up Twilio:', twilioError);
+      }
+      twilioConnectedRef.current = false;
+      
+      const finalTimer = timer;
+      const ratePerMin = callData.psychic?.ratePerMin || 1;
+      const creditsUsedValue = Math.ceil(finalTimer / 60) * ratePerMin;
+      
+      console.log(`📊 Call stats before ending: duration=${finalTimer}s, credits=${creditsUsedValue}`);
+      
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit('call-ended', {
+          callSessionId: sessionId,
+          endReason: 'ended_by_user',
+          duration: finalTimer,
+          creditsUsed: creditsUsedValue
+        });
+      }
+      
+      try {
+        const apiResponse = await api.post(`/api/calls/end/${sessionId}`, { 
+          endReason: 'ended_by_user' 
+        });
+        
+        console.log('✅ Backend call end response:', apiResponse.data);
+        
+        if (apiResponse.data.success) {
+          const backendData = apiResponse.data.data;
+          
+          handleCallEnd({
+            callSessionId: sessionId,
+            endReason: 'ended_by_user',
+            endedBy: 'user',
+            creditsUsed: backendData.creditsUsed || creditsUsedValue,
+            duration: backendData.duration || finalTimer
+          });
+          
+          toast.success('Call ended successfully');
+        } else {
+          throw new Error('Backend returned success: false');
+        }
+      } catch (apiError) {
+        console.error('API end call error:', apiError);
+        
+        toast.error('Call ended, but there was an error syncing with server');
+        
+        handleCallEnd({
+          callSessionId: sessionId,
+          endReason: 'ended_by_user',
+          endedBy: 'user',
+          creditsUsed: creditsUsedValue,
+          localOnly: true
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Error ending call:', error);
+      toast.error('Failed to end call');
+      
+      handleCallEnd({
         callSessionId: sessionId,
-        endReason: 'ended_by_user'
+        endReason: 'ended_by_user',
+        endedBy: 'user',
+        creditsUsed: timer / 60 * (callData.psychic?.ratePerMin || 1)
       });
     }
-
-    setStatus('completed');
-    stopTimers();
-
-    toast.success('Call ended successfully');
-
-    setTimeout(() => {
-      navigate('/');
-    }, 3000);
   };
 
   // Toggle mute
   const toggleMute = () => {
     const newMutedState = !isMuted;
     setIsMuted(newMutedState);
-    toast.info(newMutedState ? 'Muted' : 'Unmuted');
-
-    // Call Twilio mute functionality
+    
     if (twilioService.toggleMute) {
       twilioService.toggleMute(newMutedState);
     }
+    
+    toast.info(newMutedState ? 'Muted' : 'Unmuted');
   };
 
-  // Format time (seconds to MM:SS)
+  // Format time
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -467,161 +920,137 @@ const AudioCallPage = () => {
     return credits.toFixed(2);
   };
 
-  // Initialize countdown on mount
+  // Countdown timer for pending calls
   useEffect(() => {
-    if (callData.expiresAt) {
-      setExpiresAt(callData.expiresAt);
-      startCountdown();
+    if (timeLeft > 0 && (status === 'initiated' || status === 'ringing' || status === 'accepted')) {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      
+      countdownRef.current = setInterval(() => {
+        setTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(countdownRef.current);
+            handleCallEnd({
+              callSessionId: callSessionIdRef.current,
+              callRequestId: callRequestIdRef.current,
+              endReason: 'expired',
+              creditsUsed: 0
+            });
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
     }
-
-    if (callData.isFreeSession) {
-      setIsFreeSession(true);
-    }
-
-    // Check if we already have a token (from navigation state)
-    if (callData.token) {
-      setTwilioToken(callData.token);
-    }
-
+    
     return () => {
-      stopTimers();
-      cleanupTwilio();
+      if (countdownRef.current) clearInterval(countdownRef.current);
     };
-  }, [callData]);
+  }, [timeLeft, status, handleCallEnd]);
 
-  // Get status message
-  const getStatusMessage = () => {
-    switch (status) {
-      case 'initiated':
-        return 'Call initiated. Waiting for psychic...';
-      case 'ringing':
-        return 'Ringing psychic...';
-      case 'accepted':
-        return 'Psychic accepted! Connecting...';
-      case 'active':
-        return 'Call in progress';
-      case 'rejected':
-        return 'Call rejected by psychic';
-      case 'cancelled':
-        return 'Call cancelled';
-      case 'completed':
-        return 'Call completed';
-      case 'failed':
-        return 'Call failed';
-      default:
-        return 'Connecting...';
+  // Status verification
+  useEffect(() => {
+    if (callSessionIdRef.current && status === 'active') {
+      verifyIntervalRef.current = setInterval(verifyCallStatus, 5000);
+      
+      return () => {
+        if (verifyIntervalRef.current) {
+          clearInterval(verifyIntervalRef.current);
+        }
+      };
     }
-  };
+  }, [status, verifyCallStatus]);
 
-  // Get Twilio connection status
-  const getTwilioStatus = () => {
-    const status = twilioService.getStatus();
-    if (status.initialized && status.connected) {
-      return { text: 'Connected to Twilio', color: 'bg-green-500' };
-    } else if (status.initialized) {
-      return { text: 'Twilio ready', color: 'bg-yellow-500' };
-    } else {
-      return { text: 'Twilio not ready', color: 'bg-red-500' };
+  // Initialize on mount and handle refresh
+  useEffect(() => {
+    const init = async () => {
+      if (initializedRef.current) return;
+      
+      console.log('🎯 Component mounted/refreshed with params:', { callSessionId, callRequestId: callData.callRequestId });
+      
+      const uid = getUserIdFromToken();
+      setUserId(uid);
+      
+      if (!uid) {
+        toast.error('Please login to continue');
+        navigate('/login');
+        return;
+      }
+      
+      // Fetch call details first (this will get tokens and room info)
+      await fetchCallDetails();
+      
+      // Then initialize socket
+      const socket = initializeSocket();
+      
+      initializedRef.current = true;
+    };
+    
+    init();
+    
+    return () => {
+      console.log('🧹 Cleaning up component');
+      stopAllIntervals();
+      cleanupTwilio();
+      if (socketRef.current) {
+        socketRef.current.removeAllListeners();
+        socketRef.current.disconnect();
+      }
+      initializedRef.current = false;
+      twilioConnectedRef.current = false;
+    };
+  }, []); // Empty deps - run once on mount/refresh
+
+  // Effect to handle room name changes and join socket room
+  useEffect(() => {
+    if (socketRef.current && socketConnected && roomName && !hasJoinedRoom) {
+      console.log(`📡 Joining socket room: ${roomName}`);
+      socketRef.current.emit('join-room', roomName);
+      setHasJoinedRoom(true);
     }
-  };
+  }, [roomName, socketConnected, hasJoinedRoom]);
 
-  // Get audio status
-  const getAudioStatus = () => {
-    if (isAudioPlaying) {
-      return { text: 'Audio playing', color: 'bg-green-500' };
-    } else if (status === 'active') {
-      return { text: 'Audio connecting...', color: 'bg-yellow-500' };
-    } else {
-      return { text: 'Audio off', color: 'bg-gray-500' };
-    }
-  };
-
-  // Get action button based on status
-  const renderActionButton = () => {
-    switch (status) {
-      case 'initiated':
-      case 'ringing':
-        return (
-          <Button
-            onClick={cancelCall}
-            className="rounded-full px-8 py-6 text-lg font-semibold"
-            style={{
-              backgroundColor: '#ef4444',
-              color: 'white'
-            }}
-            disabled={isConnecting}
-          >
-            <PhoneOff className="mr-2 h-5 w-5" />
-            Cancel Call
-          </Button>
-        );
-
-      case 'accepted':
-      case 'active':
-        return (
-          <Button
-            onClick={endCall}
-            className="rounded-full px-8 py-6 text-lg font-semibold"
-            style={{
-              backgroundColor: '#ef4444',
-              color: 'white'
-            }}
-            disabled={isConnecting}
-          >
-            <PhoneOff className="mr-2 h-5 w-5" />
-            End Call
-          </Button>
-        );
-
-      case 'rejected':
-      case 'cancelled':
-      case 'completed':
-      case 'failed':
-        return (
-          <Button
-            onClick={() => navigate('/')}
-            className="rounded-full px-8 py-6 text-lg font-semibold"
-            style={{
-              backgroundColor: colors.deepPurple,
-              color: colors.softIvory
-            }}
-          >
-            <X className="mr-2 h-5 w-5" />
-            Back to Home
-          </Button>
-        );
-
-      default:
-        return null;
-    }
-  };
-
-  // Render audio permission notice
-  const renderAudioPermissionNotice = () => {
-    if (status === 'active' && !isAudioPlaying) {
-      return (
-        <div className="mt-4 p-4 rounded-lg animate-pulse"
-          style={{ backgroundColor: colors.antiqueGold + '20', border: `1px solid ${colors.antiqueGold}` }}>
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-5 w-5" style={{ color: colors.antiqueGold }} />
-            <div>
-              <p className="font-semibold text-white">Click anywhere to enable audio</p>
-              <p className="text-sm text-gray-200 mt-1">
-                Some browsers require user interaction to play audio. Click anywhere on the page to start hearing.
-              </p>
-            </div>
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: colors.deepPurple }}>
+        <div className="text-center">
+          <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6" 
+            style={{ backgroundColor: colors.antiqueGold + '20' }}>
+            <RefreshCw className="h-10 w-10 animate-spin" style={{ color: colors.antiqueGold }} />
           </div>
+          <h2 className="text-2xl font-bold text-white mb-3">Loading Call Details...</h2>
+          <p className="text-white/70">Please wait while we connect you to the call</p>
         </div>
-      );
-    }
-    return null;
-  };
+      </div>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center p-4" style={{ backgroundColor: colors.deepPurple }}>
+        <Card className="p-8 max-w-md w-full bg-white/5 backdrop-blur-sm border-white/10">
+          <div className="text-center">
+            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="h-8 w-8 text-red-400" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-3">Unable to Load Call</h2>
+            <p className="text-white/70 mb-6">{error}</p>
+            <Button
+              onClick={() => navigate('/')}
+              className="w-full"
+              style={{ backgroundColor: colors.antiqueGold, color: colors.deepPurple }}
+            >
+              Return to Home
+            </Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.deepPurple }}>
-      {/* Audio permission overlay */}
-      {renderAudioPermissionNotice()}
-
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-4xl mx-auto">
           {/* Header */}
@@ -646,13 +1075,20 @@ const AudioCallPage = () => {
                     {formatTime(timer)}
                   </Badge>
                 )}
+                <div className="flex items-center gap-1 ml-2">
+                  <div className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} title={socketConnected ? 'Socket Connected' : 'Socket Disconnected'} />
+                  <div className={`h-2 w-2 rounded-full ${
+                    syncStatus === 'synced' ? 'bg-green-500' : 
+                    syncStatus === 'syncing' ? 'bg-yellow-500 animate-pulse' : 'bg-red-500'
+                  }`} title={syncStatus === 'synced' ? 'Timer Synced' : syncStatus === 'syncing' ? 'Syncing...' : 'Sync Error'} />
+                </div>
               </div>
             </div>
 
-            <div className="w-12"></div> {/* Spacer for alignment */}
+            <div className="w-12"></div>
           </div>
 
-          {/* Main Content */}
+          {/* Rest of your JSX remains the same... */}
           <div className="grid md:grid-cols-3 gap-8">
             {/* Left Column: Psychic Info */}
             <Card className="p-6" style={{
@@ -662,7 +1098,7 @@ const AudioCallPage = () => {
               <div className="text-center">
                 <div className="relative w-32 h-32 mx-auto mb-4">
                   <img
-                    src={callData.psychic?.image}
+                    src={callData.psychic?.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(callData.psychic?.name || 'Psychic')}&background=${colors.antiqueGold.replace('#', '')}&color=${colors.deepPurple.replace('#', '')}`}
                     alt={callData.psychic?.name}
                     className="w-full h-full rounded-full object-cover border-4"
                     style={{ borderColor: colors.antiqueGold }}
@@ -769,18 +1205,28 @@ const AudioCallPage = () => {
                   {/* Status Message */}
                   <div>
                     <h3 className="text-2xl font-bold text-white mb-2">
-                      {getStatusMessage()}
+                      {status === 'loading' ? 'Loading...' : 
+                       status === 'initiated' ? 'Call initiated. Waiting for psychic...' :
+                       status === 'ringing' ? 'Ringing psychic...' :
+                       status === 'accepted' ? 'Psychic accepted! Connecting...' :
+                       status === 'active' ? 'Call in progress' :
+                       status === 'rejected' ? 'Call rejected by psychic' :
+                       status === 'cancelled' ? 'Call cancelled' :
+                       status === 'completed' ? 'Call completed' :
+                       status === 'failed' ? 'Call failed' :
+                       status === 'expired' ? 'Call request expired' :
+                       'Connecting...'}
                     </h3>
 
                     {/* Timer Display */}
                     {status === 'active' && (
-                      <div className="text-4xl font-bold text-white my-4">
+                      <div className="text-4xl font-bold text-white my-4 font-mono">
                         {formatTime(timer)}
                       </div>
                     )}
 
                     {/* Countdown Display */}
-                    {(status === 'initiated' || status === 'ringing') && timeLeft > 0 && (
+                    {(status === 'initiated' || status === 'ringing' || status === 'accepted') && timeLeft > 0 && (
                       <div className="my-4">
                         <div className="text-sm text-gray-300 mb-2">
                           Psychic has {timeLeft} seconds to respond
@@ -788,6 +1234,7 @@ const AudioCallPage = () => {
                         <Progress
                           value={(30 - timeLeft) * (100/30)}
                           className="h-2"
+                          style={{ backgroundColor: colors.antiqueGold + '40' }}
                         />
                       </div>
                     )}
@@ -795,7 +1242,7 @@ const AudioCallPage = () => {
                     {/* Credits Display */}
                     {status === 'active' && (
                       <div className="text-sm text-gray-300">
-                        Credits being used: ${formatCredits(creditsUsed)}
+                        Credits used: {formatCredits(creditsUsed)}
                         {isFreeSession && timer < 60 && (
                           <span className="ml-2 text-green-400">(First minute free)</span>
                         )}
@@ -805,19 +1252,47 @@ const AudioCallPage = () => {
 
                   {/* Action Button */}
                   <div className="pt-4">
-                    {renderActionButton()}
+                    {status === 'initiated' || status === 'ringing' ? (
+                      <Button
+                        onClick={cancelCall}
+                        className="rounded-full px-8 py-6 text-lg font-semibold"
+                        style={{ backgroundColor: '#ef4444', color: 'white' }}
+                        disabled={isConnecting}
+                      >
+                        <PhoneOff className="mr-2 h-5 w-5" />
+                        Cancel Call
+                      </Button>
+                    ) : status === 'accepted' || status === 'active' ? (
+                      <Button
+                        onClick={endCall}
+                        className="rounded-full px-8 py-6 text-lg font-semibold"
+                        style={{ backgroundColor: '#ef4444', color: 'white' }}
+                        disabled={isConnecting}
+                      >
+                        <PhoneOff className="mr-2 h-5 w-5" />
+                        End Call
+                      </Button>
+                    ) : (
+                      <Button
+                        onClick={() => navigate('/')}
+                        className="rounded-full px-8 py-6 text-lg font-semibold"
+                        style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}
+                      >
+                        <X className="mr-2 h-5 w-5" />
+                        Back to Home
+                      </Button>
+                    )}
                   </div>
                 </div>
               </Card>
 
-              {/* Control Buttons (only during active call) */}
+              {/* Control Buttons */}
               {status === 'active' && (
                 <Card className="p-6" style={{
                   backgroundColor: colors.darkPurple,
                   borderColor: colors.antiqueGold + '40'
                 }}>
                   <div className="grid grid-cols-3 gap-4">
-                    {/* Mute/Unmute */}
                     <Button
                       onClick={toggleMute}
                       className="rounded-full p-4"
@@ -827,14 +1302,9 @@ const AudioCallPage = () => {
                         color: isMuted ? 'white' : colors.antiqueGold
                       }}
                     >
-                      {isMuted ? (
-                        <MicOff className="h-6 w-6" />
-                      ) : (
-                        <Mic className="h-6 w-6" />
-                      )}
+                      {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
                     </Button>
 
-                    {/* Video Toggle (disabled for audio-only) */}
                     <Button
                       onClick={() => setIsVideoOn(!isVideoOn)}
                       className="rounded-full p-4"
@@ -846,14 +1316,9 @@ const AudioCallPage = () => {
                         opacity: 0.5
                       }}
                     >
-                      {isVideoOn ? (
-                        <Video className="h-6 w-6" />
-                      ) : (
-                        <VideoOff className="h-6 w-6" />
-                      )}
+                      {isVideoOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
                     </Button>
 
-                    {/* Switch to Chat */}
                     <Button
                       onClick={() => navigate(`/message/${callData.psychic?._id}`)}
                       className="rounded-full p-4"
@@ -872,122 +1337,19 @@ const AudioCallPage = () => {
                     <div>Video {isVideoOn ? 'Off' : 'On'}</div>
                     <div>Switch to Chat</div>
                   </div>
+
+                  {/* Audio permission notice */}
+                  {!isAudioPlaying && (
+                    <div className="mt-4 p-3 rounded-lg animate-pulse"
+                      style={{ backgroundColor: colors.antiqueGold + '20', border: `1px solid ${colors.antiqueGold}` }}>
+                      <div className="flex items-center gap-2 text-sm">
+                        <AlertCircle className="h-4 w-4" style={{ color: colors.antiqueGold }} />
+                        <span className="text-gray-200">Click anywhere to enable audio</span>
+                      </div>
+                    </div>
+                  )}
                 </Card>
               )}
-
-              {/* Connection Info */}
-              <Card className="p-6" style={{
-                backgroundColor: colors.darkPurple,
-                borderColor: colors.antiqueGold + '40'
-              }}>
-                <div className="space-y-4">
-                  <h4 className="font-semibold text-white mb-4">Connection Information</h4>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <div className="text-gray-400">Call ID:</div>
-                      <div className="text-white font-mono truncate">
-                        {callSessionId || callData.callSessionId}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-gray-400">Room:</div>
-                      <div className="text-white font-mono truncate">
-                        {roomName || callData.roomName || callData.callIdentifier}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-gray-400">Socket:</div>
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${socketRef.current?.connected ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                        <span className="text-white">
-                          {socketRef.current?.connected ? 'Connected' : 'Disconnected'}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-gray-400">Twilio:</div>
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${getTwilioStatus().color}`}></div>
-                        <span className="text-white">
-                          {getTwilioStatus().text}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-gray-400">Audio:</div>
-                      <div className="flex items-center gap-2">
-                        <div className={`h-2 w-2 rounded-full ${getAudioStatus().color}`}></div>
-                        <span className="text-white">
-                          {getAudioStatus().text}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-gray-400">Token:</div>
-                      <div className="text-white font-mono truncate">
-                        {twilioToken ? '✓ Present' : '✗ Missing'}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Help Text */}
-                  {(status === 'initiated' || status === 'ringing') && (
-                    <div className="mt-4 p-3 rounded text-sm"
-                      style={{ backgroundColor: colors.antiqueGold + '10' }}>
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 mt-0.5" style={{ color: colors.antiqueGold }} />
-                        <div>
-                          <p className="text-gray-200">
-                            Your call request has been sent to the psychic. They have 30 seconds to respond.
-                            You'll be connected automatically when they accept.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {status === 'active' && !isAudioPlaying && (
-                    <div className="mt-4 p-3 rounded text-sm animate-pulse"
-                      style={{ backgroundColor: colors.antiqueGold + '20', border: `1px solid ${colors.antiqueGold}` }}>
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 mt-0.5" style={{ color: colors.antiqueGold }} />
-                        <div>
-                          <p className="text-gray-200 font-semibold">
-                            🔊 Click anywhere on the page to enable audio
-                          </p>
-                          <p className="text-gray-200 mt-1 text-xs">
-                            Some browsers require user interaction before playing audio. Click anywhere to start hearing.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {status === 'active' && (
-                    <div className="mt-4 p-3 rounded text-sm"
-                      style={{ backgroundColor: colors.antiqueGold + '10' }}>
-                      <div className="flex items-start gap-2">
-                        <AlertCircle className="h-4 w-4 mt-0.5" style={{ color: colors.antiqueGold }} />
-                        <div>
-                          <p className="text-gray-200">
-                            Call is in progress. Credits are deducted per minute.
-                            {isFreeSession && ' Your first minute is free!'}
-                          </p>
-                          <p className="text-gray-200 mt-1">
-                            Ensure you're in a quiet place for best audio quality.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Card>
             </div>
           </div>
         </div>

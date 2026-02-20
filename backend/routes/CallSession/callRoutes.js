@@ -1,3 +1,4 @@
+// routes/callRoutes.js
 const express = require('express');
 const router = express.Router();
 const { protect } = require('../../middleware/auth');
@@ -15,82 +16,28 @@ const {
   getPsychicCallHistory,
   getPsychicActiveCall,
   getActiveCall,
-  getPsychicPendingCalls
+  getPsychicPendingCalls,
+  syncCallTimer
 } = require('../../controllers/CallSession/callController');
-// Add this to your callRoutes.js
-const jwt = require('jsonwebtoken');
 
-// Debug endpoint to check token
-router.get('/debug-token', (req, res) => {
-  try {
-    let token;
-    
-    // Check cookies
-    if (req.cookies && req.cookies.token) {
-      token = req.cookies.token;
-      console.log('Token from cookie');
-    } 
-    // Check Authorization header
-    else if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-      token = req.headers.authorization.split(' ')[1];
-      console.log('Token from header');
-    }
-    // Check psychicToken cookie
-    else if (req.cookies && req.cookies.psychicToken) {
-      token = req.cookies.psychicToken;
-      console.log('Token from psychicToken cookie');
-    }
-    
-    if (!token) {
-      return res.json({
-        success: false,
-        message: 'No token found',
-        cookies: req.cookies,
-        headers: req.headers
-      });
-    }
-    
-    // Decode token
-    const decoded = jwt.decode(token);
-    console.log('Decoded token:', decoded);
-    
-    res.json({
-      success: true,
-      tokenInfo: {
-        decoded,
-        role: decoded?.role,
-        isRolePsychic: decoded?.role === 'psychic',
-        id: decoded?.id,
-        email: decoded?.email
-      },
-      cookieNames: Object.keys(req.cookies || {})
-    });
-    
-  } catch (error) {
-    res.json({
-      success: false,
-      error: error.message
-    });
-  }
-});
-// User routes (protected)
+// ===== USER ROUTES (protected by user auth) =====
 router.post('/initiate/:psychicId', protect, initiateCall);
 router.post('/cancel/:callRequestId', protect, cancelCall);
-router.post('/end/:callSessionId', protect, endCall);
+router.post('/end/:callSessionId', protect, endCall); // User can end call
 router.get('/status/:callSessionId', protect, getCallStatus);
 router.get('/active', protect, getActiveCall);
 router.get('/history', protect, getUserCallHistory);
+router.get('/sync-timer/:callSessionId', protect, syncCallTimer);
 
-// Psychic routes (protected)
+// ===== PSYCHIC ROUTES (protected by psychic auth) =====
 router.get('/pending', protectPsychic, getPsychicPendingCalls);
-
-router.get('/request/:callRequestId', protectPsychic, getCallRequestById); // ADD THIS LINE
+router.get('/request/:callRequestId', protectPsychic, getCallRequestById);
 router.get('/details/:callRequestId', protectPsychic, getCallWithDetails);
-
 router.post('/accept/:callRequestId', protectPsychic, acceptCall);
 router.post('/reject/:callRequestId', protectPsychic, rejectCall);
+router.post('/psychic/end/:callSessionId', protectPsychic, endCall); // Psychic can end call
 router.get('/psychic/active', protectPsychic, getPsychicActiveCall);
-
 router.get('/psychic/history', protectPsychic, getPsychicCallHistory);
+router.get('/psychic/sync-timer/:callSessionId', protectPsychic, syncCallTimer);
 
 module.exports = router;

@@ -1,8 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,17 +17,35 @@ import {
   DollarSign,
   Zap,
   Shield,
-  Timer
+  Timer,
+  MessageSquare,
+  Crown,
+  Gem
 } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import axios from 'axios';
 import { useAuth } from '@/All_Components/screen/AuthContext';
+
+// Color scheme matching psychic dashboard
+const colors = {
+  primary: "#2B1B3F",      // Deep purple
+  secondary: "#C9A24D",    // Antique gold
+  accent: "#9B7EDE",       // Light purple
+  bgLight: "#3A2B4F",      // Lighter purple
+  textLight: "#E8D9B0",    // Light gold text
+  success: "#10B981",      // Green
+  warning: "#F59E0B",      // Yellow
+  danger: "#EF4444",       // Red
+  background: "#F5F3EB",   // Soft ivory
+};
+
 const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance = 0, userCredits = 0 }) => {
   const { user } = useAuth();
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
   const [chatRequest, setChatRequest] = useState(null);
   const [isChecking, setIsChecking] = useState(false);
+  
   // API instance
   const api = axios.create({
     baseURL: import.meta.env.VITE_BASE_URL || 'http://localhost:5001',
@@ -37,12 +53,14 @@ const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance
       'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
     }
   });
+
   // Check for existing pending request
   useEffect(() => {
     if (isOpen && psychic?._id && user) {
       checkExistingRequest();
     }
   }, [isOpen, psychic, user]);
+
   const checkExistingRequest = async () => {
     try {
       setIsChecking(true);
@@ -60,15 +78,18 @@ const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance
       setIsChecking(false);
     }
   };
+
   // Calculate allowed minutes
   const calculateAllowedMinutes = () => {
     if (!psychic?.ratePerMin || userCredits === 0) return 0;
     return Math.floor(userCredits / psychic.ratePerMin);
   };
+
   // Check if user can send request
   const canSendRequest = () => {
     return userCredits >= psychic?.ratePerMin;
   };
+
   // Send chat request
   const handleSendRequest = async () => {
     if (!canSendRequest()) {
@@ -79,11 +100,13 @@ const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance
       });
       return;
     }
+    
     setIsLoading(true);
     try {
       const response = await api.post('/api/chatrequest/send-request', {
         psychicId: psychic._id
       });
+      
       if (response.data.success) {
         setChatRequest(response.data.data);
         toast({
@@ -108,6 +131,7 @@ const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance
       setIsLoading(false);
     }
   };
+
   // Accept psychic's acceptance
   const handleAcceptSession = async () => {
     if (!chatRequest) return;
@@ -136,6 +160,7 @@ const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance
       setIsLoading(false);
     }
   };
+
   // Cancel request
   const handleCancelRequest = async () => {
     if (!chatRequest) return;
@@ -162,50 +187,85 @@ const ChatRequestModal = ({ psychic, isOpen, onClose, onRequestSent, userBalance
       setIsLoading(false);
     }
   };
+
   if (!psychic) return null;
+
   const allowedMinutes = calculateAllowedMinutes();
   const insufficientBalance = !canSendRequest();
   const missingAmount = psychic.ratePerMin - userCredits;
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent 
+        className="sm:max-w-md max-h-[90vh] overflow-y-auto border-none shadow-xl"
+        style={{ 
+          backgroundColor: colors.background,
+          border: `1px solid ${colors.primary}20`,
+        }}
+      >
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-500" />
-Chatsessie aanvragen
+          <DialogTitle className="flex items-center gap-2" style={{ color: colors.primary }}>
+            <Gem className="h-5 w-5" style={{ color: colors.secondary }} />
+            Request Chat Session
           </DialogTitle>
-          <DialogDescription>
-            Stuur een chatverzoek naar {psychic.name}
+          <DialogDescription style={{ color: colors.primary + '80' }}>
+            Send a chat request to {psychic.name}
           </DialogDescription>
         </DialogHeader>
+
         {/* Psychic Info */}
-        <Card className="border-0 shadow-none">
+        <Card 
+          className="border-none shadow-lg"
+          style={{ 
+            background: `linear-gradient(135deg, white 0%, ${colors.primary}05 100%)`,
+          }}
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
-              <Avatar className="h-16 w-16">
+              <Avatar className="h-16 w-16 border-2" style={{ borderColor: colors.secondary }}>
                 <AvatarImage src={psychic.image} />
-                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-white">
+                <AvatarFallback 
+                  className="font-bold"
+                  style={{ 
+                    background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)`,
+                    color: colors.textLight
+                  }}
+                >
                   {psychic.name?.[0] || 'P'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-lg">{psychic.name}</h3>
-                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-                    <Star className="h-3 w-3 mr-1 fill-purple-500" />
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="font-bold text-lg" style={{ color: colors.primary }}>{psychic.name}</h3>
+                  <Badge 
+                    className="border"
+                    style={{
+                      backgroundColor: colors.secondary + '10',
+                      color: colors.secondary,
+                      borderColor: colors.secondary + '30',
+                    }}
+                  >
+                    <Star className="h-3 w-3 mr-1" />
                     {psychic.rating || 4.8}
                   </Badge>
                 </div>
-                <p className="text-sm text-gray-600 line-clamp-2">{psychic.bio}</p>
+                <p className="text-sm line-clamp-2" style={{ color: colors.primary + '80' }}>{psychic.bio}</p>
                 <div className="flex items-center gap-4 mt-2">
                   <div className="flex items-center gap-1">
-                    <CreditCard className="h-4 w-4 text-gray-500" />
-                    <span className="text-sm font-medium">
+                    <DollarSign className="h-4 w-4" style={{ color: colors.secondary }} />
+                    <span className="text-sm font-bold" style={{ color: colors.primary }}>
                       ${psychic.ratePerMin}/min
                     </span>
                   </div>
                   {psychic.isVerified && (
-                    <Badge variant="success" className="bg-green-50 text-green-700 border-green-200">
+                    <Badge 
+                      className="border"
+                      style={{
+                        backgroundColor: colors.success + '10',
+                        color: colors.success,
+                        borderColor: colors.success + '30',
+                      }}
+                    >
                       <Shield className="h-3 w-3 mr-1" />
                       Verified
                     </Badge>
@@ -215,103 +275,174 @@ Chatsessie aanvragen
             </div>
           </CardContent>
         </Card>
+
         {/* Balance Info */}
-        <Card className="border-0 shadow-none">
+        <Card 
+          className="border-none shadow-lg"
+          style={{ 
+            background: `linear-gradient(135deg, white 0%, ${colors.primary}05 100%)`,
+          }}
+        >
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center justify-between">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2" style={{ color: colors.primary }}>
                 <CreditCard className="h-4 w-4" />
-                Je portemonnee
+                Your Wallet
               </div>
-              <Badge variant="outline" className="text-xs">
-Realtime              </Badge>
+              <Badge 
+                className="text-xs border"
+                style={{
+                  backgroundColor: colors.accent + '10',
+                  color: colors.accent,
+                  borderColor: colors.accent + '30',
+                }}
+              >
+                Live Balance
+              </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent className="pb-4">
             <div className="space-y-3">
-           
-<div className="p-3 bg-blue-50 rounded-lg border border-blue-200 mb-3">
-  <div className="flex items-center justify-between">
-    <span className="text-sm text-gray-600">Je credits</span>
-    <span className="text-lg font-bold text-blue-600">
-      {userCredits.toFixed(2)} credits {/* Show credits */}
-    </span>
-  </div>
-  <div className="text-xs text-gray-500 mt-1">
-    Balance: ${userBalance.toFixed(2)}
-  </div>
-</div>
+              {/* Credits Display */}
+              <div 
+                className="p-3 rounded-lg border"
+                style={{ 
+                  backgroundColor: colors.accent + '05',
+                  borderColor: colors.accent + '20',
+                }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-sm" style={{ color: colors.primary + '80' }}>Your Credits</span>
+                  <span className="text-lg font-bold" style={{ color: colors.accent }}>
+                    {userCredits.toFixed(2)} credits
+                  </span>
+                </div>
+                <div className="text-xs mt-1" style={{ color: colors.primary + '60' }}>
+                  Balance: ${userBalance.toFixed(2)}
+                </div>
+              </div>
               
-              <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
+              {/* Chat Time */}
+              <div 
+                className="p-3 rounded-lg border"
+                style={{ 
+                  backgroundColor: colors.primary + '05',
+                  borderColor: colors.primary + '20',
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <Timer className="h-4 w-4 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-600">Chattijd</span>
+                    <Timer className="h-4 w-4" style={{ color: colors.primary }} />
+                    <span className="text-sm font-medium" style={{ color: colors.primary }}>Available Chat Time</span>
                   </div>
-                  <div className="text-lg font-bold text-gray-800">
+                  <div className="text-lg font-bold" style={{ color: colors.primary }}>
                     {allowedMinutes} minutes
                   </div>
                 </div>
-                <div className="text-xs text-gray-500 mt-1">
-Gebaseerd op huidige credits                </div>
+                <div className="text-xs mt-1" style={{ color: colors.primary + '60' }}>
+                  Based on your current credits
+                </div>
               </div>
+
+              {/* Insufficient Balance Warning */}
               {insufficientBalance && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-red-600">
-                    <AlertCircle className="h-4 w-4" />
-                    <span className="text-sm font-medium">Onvoldoende credits</span>
+                <div 
+                  className="p-3 rounded-lg border"
+                  style={{ 
+                    backgroundColor: colors.danger + '05',
+                    borderColor: colors.danger + '20',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4" style={{ color: colors.danger }} />
+                    <span className="text-sm font-medium" style={{ color: colors.danger }}>Insufficient Credits</span>
                   </div>
-                  <p className="text-xs text-red-600 mt-1">
-                    Je hebt nog ${missingAmount.toFixed(2)} nodig voor 1 minuut chat
+                  <p className="text-xs mt-1" style={{ color: colors.danger }}>
+                    You need ${missingAmount.toFixed(2)} more for 1 minute of chat
                   </p>
                 </div>
               )}
+
+              {/* Sufficient Balance Message */}
               {allowedMinutes > 0 && !insufficientBalance && (
-                <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                  <div className="flex items-center gap-2 text-green-600">
-                    <CheckCircle className="h-4 w-4" />
-                    <span className="text-sm font-medium">Klaar om te chatten!</span>
+                <div 
+                  className="p-3 rounded-lg border"
+                  style={{ 
+                    backgroundColor: colors.success + '05',
+                    borderColor: colors.success + '20',
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-4 w-4" style={{ color: colors.success }} />
+                    <span className="text-sm font-medium" style={{ color: colors.success }}>Ready to Chat!</span>
                   </div>
-                  <p className="text-xs text-green-600 mt-1">
-Je kunt {allowedMinutes} minuut{allowedMinutes !== 1 ? 'en' : ''} chatten                
-  </p>
+                  <p className="text-xs mt-1" style={{ color: colors.success }}>
+                    You can chat for {allowedMinutes} minute{allowedMinutes !== 1 ? 's' : ''}
+                  </p>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
+
         {/* Chat Request Status */}
         {isChecking ? (
           <div className="flex items-center justify-center py-4">
-            <Loader2 className="h-5 w-5 animate-spin text-purple-600 mr-2" />
-            <span className="text-sm text-gray-600">Checking request status...</span>
+            <Loader2 className="h-5 w-5 animate-spin mr-2" style={{ color: colors.secondary }} />
+            <span className="text-sm" style={{ color: colors.primary + '70' }}>Checking request status...</span>
           </div>
         ) : chatRequest && (
-          <Card className="border-0 shadow-none">
+          <Card 
+            className="border-none shadow-lg"
+            style={{ 
+              background: `linear-gradient(135deg, white 0%, ${colors.primary}05 100%)`,
+            }}
+          >
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Status van aanvraag</CardTitle>
+              <CardTitle className="text-sm font-medium" style={{ color: colors.primary }}>
+                Request Status
+              </CardTitle>
             </CardHeader>
             <CardContent className="pb-4">
-              <div className={`p-3 rounded-lg ${
-                chatRequest.status === 'pending' ? 'bg-yellow-50 border border-yellow-200' :
-                chatRequest.status === 'accepted' ? 'bg-green-50 border border-green-200' :
-                chatRequest.status === 'rejected' ? 'bg-red-50 border border-red-200' :
-                'bg-gray-50 border border-gray-200'
-              }`}>
+              <div 
+                className={`p-3 rounded-lg border ${
+                  chatRequest.status === 'pending' ? 
+                    `bg-[${colors.warning}05] border-[${colors.warning}20]` :
+                  chatRequest.status === 'accepted' ? 
+                    `bg-[${colors.success}05] border-[${colors.success}20]` :
+                  chatRequest.status === 'rejected' ? 
+                    `bg-[${colors.danger}05] border-[${colors.danger}20]` :
+                    `bg-[${colors.primary}05] border-[${colors.primary}20]`
+                }`}
+                style={{
+                  backgroundColor: chatRequest.status === 'pending' ? colors.warning + '05' :
+                                 chatRequest.status === 'accepted' ? colors.success + '05' :
+                                 chatRequest.status === 'rejected' ? colors.danger + '05' :
+                                 colors.primary + '05',
+                  borderColor: chatRequest.status === 'pending' ? colors.warning + '20' :
+                             chatRequest.status === 'accepted' ? colors.success + '20' :
+                             chatRequest.status === 'rejected' ? colors.danger + '20' :
+                             colors.primary + '20',
+                }}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    {chatRequest.status === 'pending' && <Clock className="h-4 w-4 text-yellow-600" />}
-                    {chatRequest.status === 'accepted' && <CheckCircle className="h-4 w-4 text-green-600" />}
-                    {chatRequest.status === 'rejected' && <XCircle className="h-4 w-4 text-red-600" />}
-                    <span className={`text-sm font-medium capitalize ${
-                      chatRequest.status === 'pending' ? 'text-yellow-600' :
-                      chatRequest.status === 'accepted' ? 'text-green-600' :
-                      chatRequest.status === 'rejected' ? 'text-red-600' : 'text-gray-600'
-                    }`}>
+                    {chatRequest.status === 'pending' && <Clock className="h-4 w-4" style={{ color: colors.warning }} />}
+                    {chatRequest.status === 'accepted' && <CheckCircle className="h-4 w-4" style={{ color: colors.success }} />}
+                    {chatRequest.status === 'rejected' && <XCircle className="h-4 w-4" style={{ color: colors.danger }} />}
+                    <span 
+                      className="text-sm font-medium capitalize"
+                      style={{
+                        color: chatRequest.status === 'pending' ? colors.warning :
+                               chatRequest.status === 'accepted' ? colors.success :
+                               chatRequest.status === 'rejected' ? colors.danger :
+                               colors.primary,
+                      }}
+                    >
                       {chatRequest.status}
                     </span>
                   </div>
-                  <span className="text-xs text-gray-500">
+                  <span className="text-xs" style={{ color: colors.primary + '60' }}>
                     {new Date(chatRequest.requestedAt).toLocaleTimeString([], {
                       hour: '2-digit',
                       minute: '2-digit'
@@ -320,127 +451,175 @@ Je kunt {allowedMinutes} minuut{allowedMinutes !== 1 ? 'en' : ''} chatten
                 </div>
                 
                 {chatRequest.status === 'accepted' && (
-                  <p className="text-xs text-green-600 mt-2">
-Medium geaccepteerd! Klik op  Start sessie  om de betaalde chat te starten.                  </p>
+                  <p className="text-xs mt-2" style={{ color: colors.success }}>
+                    <CheckCircle className="inline h-3 w-3 mr-1" />
+                    Psychic accepted! Click "Start Paid Session" to begin.
+                  </p>
                 )}
                 
                 {chatRequest.status === 'rejected' && (
-                  <p className="text-xs text-red-600 mt-2">
-Het medium heeft je verzoek afgewezen.                  </p>
+                  <p className="text-xs mt-2" style={{ color: colors.danger }}>
+                    <XCircle className="inline h-3 w-3 mr-1" />
+                    The psychic has declined your request.
+                  </p>
                 )}
+                
                 {chatRequest.status === 'pending' && (
-                  <p className="text-xs text-yellow-600 mt-2">
-Wachten op reactie van het medium…”                  </p>
+                  <p className="text-xs mt-2" style={{ color: colors.warning }}>
+                    <Clock className="inline h-3 w-3 mr-1" />
+                    Waiting for psychic response...
+                  </p>
                 )}
               </div>
             </CardContent>
           </Card>
         )}
+
         {/* Action Buttons */}
-      <div className="flex flex-col gap-2">
-  {!chatRequest ? (
-    <Button
-      onClick={handleSendRequest}
-      disabled={isLoading || insufficientBalance || isChecking}
-      className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
-    >
-      {isLoading ? (
-        <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          Verzoek verzenden...
-        </>
-      ) : (
-        <>
-Klik op het chatverzoek hieronder om de chat te starten        </>
-      )}
-    </Button>
-  ) : chatRequest.status === 'pending' ? (
-    <div className="flex gap-2">
-      <Button
-        onClick={handleCancelRequest}
-        disabled={isLoading}
-        variant="outline"
-        className="flex-1"
-      >
-        {isLoading ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          'Verzoek annuleren'
-        )}
-      </Button>
-      <Button
-        disabled
-        className="flex-1 bg-yellow-100 text-yellow-700 hover:bg-yellow-100"
-      >
-        <Clock className="mr-2 h-4 w-4" />
-        Wachten op reactie
-      </Button>
-    </div>
-  ) : chatRequest.status === 'accepted' ? (
-    <div className="space-y-2">
-      <Button
-        onClick={handleAcceptSession}
-        disabled={isLoading || insufficientBalance}
-        className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
-      >
-        {isLoading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Sessie starten...
-          </>
-        ) : (
-          <>
-            <CheckCircle className="mr-2 h-4 w-4" />
-            Betaalde sessie starten ({allowedMinutes} min beschikbaar)
-          </>
-        )}
-      </Button>
-      <Button
-        onClick={handleCancelRequest}
-        disabled={isLoading}
-        variant="outline"
-        className="w-full"
-      >
-        Sessie weigeren
-      </Button>
-    </div>
-  ) : chatRequest.status === 'rejected' ? (
-    <div className="space-y-2">
-      <Button
-        onClick={() => setChatRequest(null)}
-        className="w-full"
-      >
-        Opnieuw proberen
-      </Button>
-      <Button
-        onClick={onClose}
-        variant="outline"
-        className="w-full"
-      >
-        Sluiten
-      </Button>
-    </div>
-  ) : null}
-  {!chatRequest && insufficientBalance && (
-    <Button
-      onClick={() => window.location.href = '/wallet'}
-      variant="outline"
-      className="w-full"
-    >
-      <CreditCard className="mr-2 h-4 w-4" />
-      Voeg ${missingAmount.toFixed(2)} toe aan Wallet
-    </Button>
-  )}
-  <Button
-    onClick={onClose}
-    variant="ghost"
-    className="w-full"
-  >
-    Sluiten
-  </Button>
-</div>
-</DialogContent>
-</Dialog>
-);
+        <div className="flex flex-col gap-2">
+          {!chatRequest ? (
+            <Button
+              onClick={handleSendRequest}
+              disabled={isLoading || insufficientBalance || isChecking}
+              className="w-full hover:scale-[1.02] transition-transform duration-200"
+              style={{
+                backgroundColor: colors.secondary,
+                color: colors.primary,
+              }}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending Request...
+                </>
+              ) : (
+                <>
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  Send Chat Request
+                </>
+              )}
+            </Button>
+          ) : chatRequest.status === 'pending' ? (
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCancelRequest}
+                disabled={isLoading}
+                variant="outline"
+                className="flex-1"
+                style={{
+                  borderColor: colors.primary + '20',
+                  color: colors.primary,
+                }}
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Cancel Request'
+                )}
+              </Button>
+              <Button
+                disabled
+                className="flex-1"
+                style={{
+                  backgroundColor: colors.warning + '10',
+                  color: colors.warning,
+                  borderColor: colors.warning + '20',
+                }}
+              >
+                <Clock className="mr-2 h-4 w-4" />
+                Waiting for Response
+              </Button>
+            </div>
+          ) : chatRequest.status === 'accepted' ? (
+            <div className="space-y-2">
+              <Button
+                onClick={handleAcceptSession}
+                disabled={isLoading || insufficientBalance}
+                className="w-full hover:scale-[1.02] transition-transform duration-200"
+                style={{
+                  backgroundColor: colors.success,
+                  color: 'white',
+                }}
+              >
+                {isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Starting Session...
+                  </>
+                ) : (
+                  <>
+                    <Zap className="mr-2 h-4 w-4" />
+                    Start Paid Session ({allowedMinutes} min available)
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleCancelRequest}
+                disabled={isLoading}
+                variant="outline"
+                className="w-full"
+                style={{
+                  borderColor: colors.primary + '20',
+                  color: colors.primary,
+                }}
+              >
+                Decline Session
+              </Button>
+            </div>
+          ) : chatRequest.status === 'rejected' ? (
+            <div className="space-y-2">
+              <Button
+                onClick={() => setChatRequest(null)}
+                className="w-full"
+                style={{
+                  backgroundColor: colors.accent + '10',
+                  color: colors.accent,
+                  borderColor: colors.accent + '20',
+                }}
+              >
+                Try Again
+              </Button>
+              <Button
+                onClick={onClose}
+                variant="outline"
+                className="w-full"
+                style={{
+                  borderColor: colors.primary + '20',
+                  color: colors.primary,
+                }}
+              >
+                Close
+              </Button>
+            </div>
+          ) : null}
+          
+          {!chatRequest && insufficientBalance && (
+            <Button
+              onClick={() => window.location.href = '/wallet'}
+              variant="outline"
+              className="w-full"
+              style={{
+                borderColor: colors.secondary,
+                color: colors.secondary,
+              }}
+            >
+              <CreditCard className="mr-2 h-4 w-4" />
+              Add ${missingAmount.toFixed(2)} to Wallet
+            </Button>
+          )}
+          
+          <Button
+            onClick={onClose}
+            variant="ghost"
+            className="w-full"
+            style={{ color: colors.primary + '70' }}
+          >
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 };
+
 export default ChatRequestModal;

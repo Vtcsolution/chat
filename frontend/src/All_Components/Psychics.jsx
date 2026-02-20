@@ -1,5 +1,5 @@
 // Psychics.jsx
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
@@ -26,7 +26,9 @@ import {
   SortAsc,
   SortDesc,
   ChevronRight,
-  Loader
+  Loader,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -47,9 +49,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "./screen/AuthContext";
+import io from 'socket.io-client';
 
 const Psychics = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   
   // Color scheme (same as home page)
   const colors = {
@@ -59,6 +64,11 @@ const Psychics = () => {
     lightGold: "#E8D9B0",
     darkPurple: "#1A1129",
   };
+
+  // Socket reference
+  const socketRef = useRef(null);
+  const [socketConnected, setSocketConnected] = useState(false);
+  const subscribedPsychicsRef = useRef(new Set());
 
   // State
   const [psychics, setPsychics] = useState([]);
@@ -73,26 +83,31 @@ const Psychics = () => {
   const [expandedPsychic, setExpandedPsychic] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [availableOnly, setAvailableOnly] = useState(false);
+  const [psychicStatuses, setPsychicStatuses] = useState({});
+  const [ratingSummaries, setRatingSummaries] = useState({});
   const [priceRange, setPriceRange] = useState([0, 10]);
   const [experienceRange, setExperienceRange] = useState([0, 30]);
+  const [showFilters, setShowFilters] = useState(false);
+  const [availableCategories, setAvailableCategories] = useState([]);
+  const [categoryCounts, setCategoryCounts] = useState({});
   
   // Pagination
   const [itemsPerPage] = useState(6);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
 
-  // Categories
+  // Categories with icons and default
   const categories = [
-    { id: "all", label: "All Psychics", icon: "🔮" },
-    { id: "tarot", label: "Tarot Reading", icon: "🃏" },
-    { id: "astrology", label: "Astrology", icon: "♈" },
-    { id: "love", label: "Love & Relationships", icon: "💖" },
-    { id: "career", label: "Career & Finance", icon: "💼" },
-    { id: "spiritual", label: "Spiritual Guidance", icon: "🕊️" },
-    { id: "mediumship", label: "Mediumship", icon: "👻" },
-    { id: "numerology", label: "Numerology", icon: "🔢" },
-    { id: "clairvoyant", label: "Clairvoyant", icon: "👁️" },
-    { id: "dream", label: "Dream Analysis", icon: "💭" },
+    { id: "all", label: "All Psychics", icon: "🔮", value: "all" },
+    { id: "Tarot Reading", label: "Tarot Reading", icon: "🃏", value: "Tarot Reading" },
+    { id: "Astrology", label: "Astrology", icon: "♈", value: "Astrology" },
+    { id: "Reading", label: "Reading", icon: "📖", value: "Reading" },
+    { id: "Love & Relationships", label: "Love & Relationships", icon: "💖", value: "Love & Relationships" },
+    { id: "Career & Finance", label: "Career & Finance", icon: "💼", value: "Career & Finance" },
+    { id: "Spiritual Guidance", label: "Spiritual Guidance", icon: "🕊️", value: "Spiritual Guidance" },
+    { id: "Numerology", label: "Numerology", icon: "🔢", value: "Numerology" },
+    { id: "Clairvoyant", label: "Clairvoyant", icon: "👁️", value: "Clairvoyant" },
+    { id: "Dream Analysis", label: "Dream Analysis", icon: "💭", value: "Dream Analysis" },
   ];
 
   // Sort options
@@ -105,298 +120,397 @@ const Psychics = () => {
     { id: "name", label: "Name: A to Z" },
   ];
 
-  // Static psychic data for demo (same as home page)
-  const staticPsychicProfiles = [
-    {
-      _id: "1",
-      name: "Serena Moon",
-      image: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=400&h=400&fit=crop",
-      specialty: "Tarot & Astrology",
-      gender: "female",
-      bio: "With over 15 years of experience, Serena specializes in tarot readings and astrological guidance. She has helped thousands find clarity in love and career paths.",
-      rating: {
-        avgRating: 4.9,
-        totalReviews: 342
-      },
-      ratePerMin: 2.50,
-      experience: "15+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: true,
-      createdAt: "2021-03-15T00:00:00.000Z",
-      abilities: ["tarot", "astrology", "love", "career"],
-      languages: ["English", "Spanish"],
-      modalities: ["Tarot Reading", "Astrology", "Love Guidance"],
-      experienceYears: 15,
-      successRate: 95,
-      clientsHelped: 500
-    },
-    {
-      _id: "2",
-      name: "Marcus Thorne",
-      image: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop",
-      specialty: "Mediumship & Spiritual Healing",
-      gender: "male",
-      bio: "A third-generation medium, Marcus connects with spiritual realms to provide healing and closure. Specializes in connecting with loved ones who have passed.",
-      rating: {
-        avgRating: 4.8,
-        totalReviews: 278
-      },
-      ratePerMin: 3.00,
-      experience: "12+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: false,
-      createdAt: "2020-07-22T00:00:00.000Z",
-      abilities: ["mediumship", "spiritual", "healing", "relationships"],
-      languages: ["English", "French"],
-      modalities: ["Mediumship", "Spiritual Healing", "Relationship Guidance"],
-      experienceYears: 12,
-      successRate: 92,
-      clientsHelped: 350
-    },
-    {
-      _id: "3",
-      name: "Luna Rivers",
-      image: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w-400&h=400&fit=crop",
-      specialty: "Numerology & Life Path",
-      gender: "female",
-      bio: "Luna uses numerology and intuitive guidance to help clients discover their life purpose and overcome obstacles. Her readings are known for their accuracy.",
-      rating: {
-        avgRating: 4.7,
-        totalReviews: 189
-      },
-      ratePerMin: 1.75,
-      experience: "8+ years",
-      isVerified: true,
-      isAvailable: false,
-      isFeatured: true,
-      createdAt: "2022-01-10T00:00:00.000Z",
-      abilities: ["numerology", "career", "life path", "spiritual"],
-      languages: ["English"],
-      modalities: ["Numerology", "Life Path Guidance", "Career Counseling"],
-      experienceYears: 8,
-      successRate: 89,
-      clientsHelped: 200
-    },
-    {
-      _id: "4",
-      name: "Elena Stardust",
-      image: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=400&h=400&fit=crop",
-      specialty: "Crystal Healing & Energy Work",
-      gender: "female",
-      bio: "Specializing in crystal energy and chakra balancing, Elena helps clients restore their spiritual energy and find inner peace.",
-      rating: {
-        avgRating: 4.8,
-        totalReviews: 156
-      },
-      ratePerMin: 2.25,
-      experience: "7+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: false,
-      createdAt: "2021-09-05T00:00:00.000Z",
-      abilities: ["crystals", "energy", "chakra", "healing"],
-      languages: ["English", "Italian"],
-      modalities: ["Crystal Healing", "Energy Work", "Chakra Balancing"],
-      experienceYears: 7,
-      successRate: 91,
-      clientsHelped: 180
-    },
-    {
-      _id: "5",
-      name: "Orion Night",
-      image: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=400&h=400&fit=crop",
-      specialty: "Past Life Regression",
-      gender: "male",
-      bio: "Orion specializes in past life regression and karmic readings, helping clients understand their soul's journey across lifetimes.",
-      rating: {
-        avgRating: 4.6,
-        totalReviews: 134
-      },
-      ratePerMin: 2.75,
-      experience: "10+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: false,
-      createdAt: "2019-11-20T00:00:00.000Z",
-      abilities: ["past life", "karma", "regression", "soul"],
-      languages: ["English", "German"],
-      modalities: ["Past Life Regression", "Karmic Readings", "Soul Journey"],
-      experienceYears: 10,
-      successRate: 88,
-      clientsHelped: 150
-    },
-    {
-      _id: "6",
-      name: "Aurora Celeste",
-      image: "https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w=400&h=400&fit=crop",
-      specialty: "Divine Feminine & Moon Magic",
-      gender: "female",
-      bio: "Aurora focuses on divine feminine energy, moon cycles, and ritual magic to empower clients in their spiritual journey.",
-      rating: {
-        avgRating: 4.9,
-        totalReviews: 210
-      },
-      ratePerMin: 3.25,
-      experience: "9+ years",
-      isVerified: true,
-      isAvailable: false,
-      isFeatured: true,
-      createdAt: "2020-05-12T00:00:00.000Z",
-      abilities: ["moon", "feminine", "rituals", "empowerment"],
-      languages: ["English", "Portuguese"],
-      modalities: ["Moon Magic", "Divine Feminine", "Ritual Guidance"],
-      experienceYears: 9,
-      successRate: 94,
-      clientsHelped: 220
-    },
-    {
-      _id: "7",
-      name: "Caspian Waters",
-      image: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&h=400&fit=crop",
-      specialty: "Water Divination & Emotion Healing",
-      gender: "male",
-      bio: "Using water scrying and emotion-based readings, Caspian helps clients navigate emotional waters and find emotional clarity.",
-      rating: {
-        avgRating: 4.7,
-        totalReviews: 98
-      },
-      ratePerMin: 2.00,
-      experience: "6+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: false,
-      createdAt: "2022-03-18T00:00:00.000Z",
-      abilities: ["water", "emotions", "scrying", "healing"],
-      languages: ["English", "Japanese"],
-      modalities: ["Water Divination", "Emotion Healing", "Scrying"],
-      experienceYears: 6,
-      successRate: 87,
-      clientsHelped: 120
-    },
-    {
-      _id: "8",
-      name: "Phoenix Flame",
-      image: "https://images.unsplash.com/photo-1581403341630-a6e0b9d2d257?w=400&h=400&fit=crop",
-      specialty: "Transformation & Rebirth",
-      gender: "non-binary",
-      bio: "Phoenix specializes in transformation readings, helping clients navigate major life changes and rebirth moments with grace.",
-      rating: {
-        avgRating: 4.8,
-        totalReviews: 167
-      },
-      ratePerMin: 2.50,
-      experience: "11+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: true,
-      createdAt: "2018-08-30T00:00:00.000Z",
-      abilities: ["transformation", "rebirth", "change", "guidance"],
-      languages: ["English", "Spanish", "French"],
-      modalities: ["Transformation Readings", "Rebirth Guidance", "Life Change Support"],
-      experienceYears: 11,
-      successRate: 93,
-      clientsHelped: 190
-    },
-    {
-      _id: "9",
-      name: "Sage Whisper",
-      image: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&h=400&fit=crop",
-      specialty: "Plant Spirit Communication",
-      gender: "female",
-      bio: "Sage communicates with plant spirits and uses herbal wisdom to provide grounded, earth-connected spiritual guidance.",
-      rating: {
-        avgRating: 4.5,
-        totalReviews: 89
-      },
-      ratePerMin: 1.50,
-      experience: "5+ years",
-      isVerified: true,
-      isAvailable: true,
-      isFeatured: false,
-      createdAt: "2022-06-14T00:00:00.000Z",
-      abilities: ["plants", "herbs", "earth", "grounding"],
-      languages: ["English"],
-      modalities: ["Plant Spirit Communication", "Herbal Wisdom", "Earth Connection"],
-      experienceYears: 5,
-      successRate: 85,
-      clientsHelped: 110
-    }
-  ];
+  // Fetch psychic categories from API
+  useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/api/human-psychics/categories`);
+        if (response.data.success) {
+          setAvailableCategories(response.data.categories);
+          
+          // Create category counts object
+          const counts = {};
+          response.data.categories.forEach(cat => {
+            counts[cat.name] = cat.count;
+          });
+          setCategoryCounts(counts);
+        }
+      } catch (error) {
+        console.error("Error fetching categories:", error);
+      }
+    };
+    
+    fetchCategories();
+  }, []);
 
-  // Fetch psychics data (using static data for demo)
+  // Fetch psychic rating summary
+  const fetchPsychicRatingSummary = async (psychicId) => {
+    try {
+      const endpoints = [
+        `${import.meta.env.VITE_BASE_URL}/api/psychic/${psychicId}/summary`,
+        `${import.meta.env.VITE_BASE_URL}/api/ratings/psychic/${psychicId}/summary`,
+        `${import.meta.env.VITE_BASE_URL}/api/human-psychics/${psychicId}/summary`
+      ];
+      
+      for (const endpoint of endpoints) {
+        try {
+          const response = await axios.get(endpoint, { timeout: 3000 });
+          if (response.data && response.data.success) {
+            return response.data.data;
+          }
+        } catch (err) {
+          // Try next endpoint
+        }
+      }
+      return null;
+    } catch (error) {
+      return null;
+    }
+  };
+
+  // ========== SOCKET.IO SETUP ==========
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    const userId = user?._id || '';
+    
+    if (!userId) return;
+    
+    if (socketRef.current?.connected) {
+      console.log('ℹ️ Socket already connected');
+      return;
+    }
+
+    console.log('🔄 Creating new socket connection for psychics page...');
+    
+    const newSocket = io(`${import.meta.env.VITE_BASE_URL}`, {
+      auth: {
+        token,
+        userId,
+        role: 'user'
+      },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+      timeout: 20000,
+    });
+
+    socketRef.current = newSocket;
+
+    // Connection events
+    newSocket.on('connect', () => {
+      console.log('✅ Socket.io connected:', newSocket.id);
+      setSocketConnected(true);
+      
+      // Join global psychic list room
+      newSocket.emit('join_room', 'psychic_list_status');
+    });
+
+    newSocket.on('disconnect', (reason) => {
+      console.log('❌ Socket.io disconnected:', reason);
+      setSocketConnected(false);
+    });
+
+    newSocket.on('connect_error', (error) => {
+      console.error('Socket connection error:', error);
+      setSocketConnected(false);
+    });
+
+    // Consolidated psychic status handler
+    const handlePsychicStatusUpdate = (data) => {
+      console.log('🔄 Psychic status update:', {
+        psychicId: data.psychicId,
+        status: data.status,
+        timestamp: new Date(data.timestamp).toLocaleTimeString()
+      });
+      
+      setPsychicStatuses(prev => ({
+        ...prev,
+        [data.psychicId]: {
+          status: data.status,
+          lastSeen: data.lastSeen,
+          lastActive: data.lastActive,
+          lastUpdate: Date.now(),
+          isOnline: data.status === 'online'
+        }
+      }));
+    };
+
+    // Listen for all status update events
+    newSocket.on('psychic_status_changed', handlePsychicStatusUpdate);
+    newSocket.on('psychic_status_update', handlePsychicStatusUpdate);
+    newSocket.on('psychic_online', handlePsychicStatusUpdate);
+
+    // Initial statuses response
+    newSocket.on('psychic_statuses_response', (data) => {
+      console.log('📋 Initial psychic statuses received');
+      if (data.statuses && !data.error) {
+        const newStatuses = {};
+        Object.keys(data.statuses).forEach(psychicId => {
+          newStatuses[psychicId] = {
+            status: data.statuses[psychicId].status || 'offline',
+            lastSeen: data.statuses[psychicId].lastSeen,
+            lastActive: data.statuses[psychicId].lastActive,
+            lastUpdate: Date.now(),
+            isOnline: data.statuses[psychicId].status === 'online'
+          };
+        });
+        setPsychicStatuses(prev => ({ ...prev, ...newStatuses }));
+      }
+    });
+
+    // Cleanup on unmount
+    return () => {
+      console.log('🧹 Cleaning up socket connection');
+      if (socketRef.current) {
+        socketRef.current.disconnect();
+        socketRef.current = null;
+      }
+      subscribedPsychicsRef.current.clear();
+    };
+  }, [user?._id]);
+
+  // Smart subscription to psychic statuses
+  useEffect(() => {
+    if (!socketConnected || !socketRef.current || psychics.length === 0) return;
+
+    const allPsychicIds = psychics.map(p => p._id).filter(id => id && !subscribedPsychicsRef.current.has(id));
+
+    if (allPsychicIds.length === 0) return;
+
+    console.log('📊 Subscribing to psychic statuses:', allPsychicIds);
+
+    // Subscribe to status updates
+    socketRef.current.emit('subscribe_to_psychic_status', { 
+      psychicIds: allPsychicIds 
+    });
+
+    // Request initial statuses
+    socketRef.current.emit('get_psychic_statuses', { 
+      psychicIds: allPsychicIds 
+    });
+
+    // Add to subscribed set
+    allPsychicIds.forEach(id => subscribedPsychicsRef.current.add(id));
+
+    // Set up periodic status refresh (every 60 seconds)
+    const refreshInterval = setInterval(() => {
+      if (socketConnected && allPsychicIds.length > 0) {
+        socketRef.current.emit('get_psychic_statuses', { 
+          psychicIds: allPsychicIds 
+        });
+      }
+    }, 60000);
+
+    return () => clearInterval(refreshInterval);
+  }, [socketConnected, psychics]);
+
+  // ========== HELPER FUNCTIONS ==========
+  const getPsychicStatus = (psychicId) => {
+    const statusData = psychicStatuses[psychicId];
+    if (!statusData) return 'offline';
+    
+    // If status is online but last update was more than 2 minutes ago, mark as away
+    if (statusData.status === 'online' && statusData.lastUpdate) {
+      const minutesSinceUpdate = (Date.now() - statusData.lastUpdate) / (1000 * 60);
+      if (minutesSinceUpdate > 2) {
+        return 'away';
+      }
+    }
+    
+    return statusData.status || 'offline';
+  };
+
+  const getStatusBadgeColor = (status) => {
+    switch (status) {
+      case 'online':
+        return 'bg-emerald-500 text-white';
+      case 'away':
+        return 'bg-yellow-500 text-white';
+      case 'busy':
+        return 'bg-orange-500 text-white';
+      case 'offline':
+        return 'bg-gray-400 text-white';
+      default:
+        return 'bg-gray-400 text-white';
+    }
+  };
+
+  const getStatusText = (status) => {
+    switch (status) {
+      case 'online':
+        return 'Online';
+      case 'away':
+        return 'Away';
+      case 'busy':
+        return 'Busy';
+      case 'offline':
+        return 'Offline';
+      default:
+        return 'Offline';
+    }
+  };
+
+  const getStatusIcon = (status) => {
+    switch (status) {
+      case 'online':
+        return <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>;
+      case 'away':
+        return <div className="h-2 w-2 rounded-full bg-yellow-500"></div>;
+      case 'busy':
+        return <div className="h-2 w-2 rounded-full bg-orange-500"></div>;
+      default:
+        return <div className="h-2 w-2 rounded-full bg-gray-400"></div>;
+    }
+  };
+
+  const isPsychicAvailable = (psychicId) => {
+    const status = getPsychicStatus(psychicId);
+    return status === 'online' || status === 'away';
+  };
+
+  // Get category with default
+  const getPsychicCategory = (psychic) => {
+    return psychic.category || "Reading";
+  };
+
+  // Fetch psychics from API with category filter
   useEffect(() => {
     const fetchPsychics = async () => {
       setIsLoading(true);
       try {
-        // For demo, use static data
-        setTimeout(() => {
-          const psychicsData = staticPsychicProfiles.map(p => ({
-            ...p,
-            isHuman: true,
-            isAvailable: p.isAvailable !== undefined ? p.isAvailable : Math.random() > 0.3,
-            languages: p.languages || ["English"],
-            modalities: p.modalities || [p.specialty || "Psychic Reading"],
-            experienceYears: p.experienceYears || parseInt(p.experience) || 3,
-            successRate: p.successRate || Math.floor(Math.random() * 10) + 85,
-            clientsHelped: p.clientsHelped || Math.floor(Math.random() * 400) + 100
-          }));
-          
-          setPsychics(psychicsData);
-          setFilteredPsychics(psychicsData);
-          
-          // Set initial displayed psychics
-          const initialDisplay = psychicsData.slice(0, itemsPerPage);
-          setDisplayedPsychics(initialDisplay);
-          setHasMore(psychicsData.length > itemsPerPage);
-          
-          setIsLoading(false);
-        }, 800);
+        const token = localStorage.getItem("accessToken");
         
+        // Build query params for category filtering
+        const params = new URLSearchParams();
+        if (selectedCategories.length > 0 && !selectedCategories.includes("all")) {
+          params.append('category', selectedCategories.join(','));
+        }
+        if (searchQuery) {
+          params.append('search', searchQuery);
+        }
+        if (sortBy) {
+          params.append('sortBy', sortBy);
+          params.append('sortOrder', sortOrder);
+        }
+        
+        const url = `${import.meta.env.VITE_BASE_URL}/api/human-psychics${params.toString() ? '?' + params.toString() : ''}`;
+        
+        const response = await axios.get(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          withCredentials: true,
+        });
+        
+        const data = response.data;
+        if (data.success && Array.isArray(data.psychics)) {
+          const formattedPsychics = data.psychics.map(p => ({
+            ...p,
+            category: p.category || "Reading", // Default to Reading if no category
+            isHuman: true,
+            type: p.type || "Human Psychic",
+            modalities: p.modalities || p.abilities || [p.category || "Psychic Reading"],
+            experienceYears: p.experience || p.experienceYears || 3,
+            successRate: p.successRate || 95,
+            clientsHelped: p.clientsHelped || 500
+          }));
+
+          // Fetch rating summaries for each psychic
+          const ratingSummaryPromises = formattedPsychics.map(async (psychic) => {
+            const summary = await fetchPsychicRatingSummary(psychic._id);
+            return { psychicId: psychic._id, summary };
+          });
+
+          const summaries = await Promise.all(ratingSummaryPromises);
+          const summaryMap = {};
+          summaries.forEach(item => {
+            if (item.summary) {
+              summaryMap[item.psychicId] = item.summary;
+            }
+          });
+          setRatingSummaries(prev => ({ ...prev, ...summaryMap }));
+
+          // Merge rating data with psychics
+          const psychicsWithRatings = formattedPsychics.map(psychic => ({
+            ...psychic,
+            rating: summaryMap[psychic._id] || psychic.rating || {
+              avgRating: 4.5,
+              totalReviews: 100
+            }
+          }));
+
+          setPsychics(psychicsWithRatings);
+          
+          // Fetch initial statuses
+          const psychicIds = formattedPsychics.map(p => p._id);
+          if (psychicIds.length > 0) {
+            try {
+              const statusResponse = await axios.post(
+                `${import.meta.env.VITE_BASE_URL}/api/human-psychics/statuses-fast`,
+                { psychicIds },
+                { 
+                  headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  timeout: 2000
+                }
+              );
+              
+              if (statusResponse.data.success) {
+                const newStatuses = {};
+                Object.keys(statusResponse.data.statuses).forEach(id => {
+                  newStatuses[id] = {
+                    status: statusResponse.data.statuses[id].status,
+                    lastSeen: statusResponse.data.statuses[id].lastSeen,
+                    lastActive: statusResponse.data.statuses[id].lastActive,
+                    lastUpdate: Date.now()
+                  };
+                });
+                
+                setPsychicStatuses(prev => ({
+                  ...prev,
+                  ...newStatuses
+                }));
+              }
+            } catch (statusError) {
+              console.warn("Status fetch failed:", statusError);
+            }
+          }
+        } else {
+          throw new Error(data.message || "Failed to fetch psychics");
+        }
       } catch (error) {
         console.error("Error fetching psychics:", error);
-        toast.error("Failed to load psychics. Please try again.");
+        toast.error(error.response?.data?.message || "Failed to load psychics. Please try again.");
+      } finally {
         setIsLoading(false);
       }
     };
     
     fetchPsychics();
-  }, []);
+  }, [selectedCategories, searchQuery, sortBy, sortOrder]); // Add dependencies for filtering
 
-  // Filter and sort psychics
+  // Filter and sort psychics (client-side as backup)
   useEffect(() => {
     let result = [...psychics];
 
-    // Filter by search query
+    // Filter by search query (additional client-side filtering)
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       result = result.filter(psychic =>
-        psychic.name.toLowerCase().includes(query) ||
+        psychic.name?.toLowerCase().includes(query) ||
         psychic.bio?.toLowerCase().includes(query) ||
         psychic.specialty?.toLowerCase().includes(query) ||
-        psychic.modalities?.some(m => m.toLowerCase().includes(query))
+        (psychic.category || "Reading").toLowerCase().includes(query) ||
+        psychic.modalities?.some(m => m?.toLowerCase().includes(query))
       );
     }
 
-    // Filter by categories
-    if (selectedCategories.length > 0 && !selectedCategories.includes("all")) {
-      result = result.filter(psychic =>
-        selectedCategories.some(category =>
-          psychic.specialty?.toLowerCase().includes(category) ||
-          psychic.modalities?.some(m => m.toLowerCase().includes(category))
-        )
-      );
-    }
-
-    // Filter by availability
+    // Filter by availability (real-time)
     if (availableOnly) {
-      result = result.filter(psychic => psychic.isAvailable);
+      result = result.filter(psychic => isPsychicAvailable(psychic._id));
     }
 
     // Filter by price range
     result = result.filter(psychic =>
-      psychic.ratePerMin >= priceRange[0] && psychic.ratePerMin <= priceRange[1]
+      (psychic.ratePerMin || 1) >= priceRange[0] && (psychic.ratePerMin || 1) <= priceRange[1]
     );
 
     // Filter by experience range
@@ -426,7 +540,7 @@ const Psychics = () => {
           comparison = (b.experienceYears || 0) - (a.experienceYears || 0);
           break;
         case "name":
-          comparison = a.name.localeCompare(b.name);
+          comparison = (a.name || "").localeCompare(b.name || "");
           break;
         default:
           comparison = 0;
@@ -442,7 +556,7 @@ const Psychics = () => {
     setDisplayedPsychics(initialDisplay);
     setCurrentPage(1);
     setHasMore(result.length > itemsPerPage);
-  }, [psychics, searchQuery, selectedCategories, sortBy, sortOrder, availableOnly, priceRange, experienceRange]);
+  }, [psychics, searchQuery, sortBy, sortOrder, availableOnly, priceRange, experienceRange, psychicStatuses]);
 
   // Load more psychics
   const loadMorePsychics = () => {
@@ -467,7 +581,7 @@ const Psychics = () => {
       setSelectedCategories(["all"]);
     } else {
       setSelectedCategories(prev => {
-        const newSelection = prev.includes("all") ? [] : [...prev];
+        const newSelection = prev.includes("all") ? [categoryId] : [...prev];
         if (newSelection.includes(categoryId)) {
           return newSelection.filter(id => id !== categoryId);
         } else {
@@ -477,18 +591,145 @@ const Psychics = () => {
     }
   };
 
-  // Handle psychic selection (chat/call)
-  const handlePsychicSelect = async (psychic, type = "chat") => {
+  // Handle chat initiation
+  const handlePsychicSelect = async (psychic) => {
+    if (!user) {
+      toast.error("Please log in to chat with a psychic");
+      navigate("/login");
+      return;
+    }
+
+    const psychicStatus = getPsychicStatus(psychic._id);
+    const isAvailable = isPsychicAvailable(psychic._id);
+
+    if (!isAvailable) {
+      toast.error(`This psychic is currently ${psychicStatus.toLowerCase()}. Please try again later.`);
+      return;
+    }
+    
     setIsSubmitting(true);
     try {
-      // Simulate API call
-      setTimeout(() => {
-        navigate(`/message/${psychic._id}`);
-        setIsSubmitting(false);
-      }, 500);
+      const token = localStorage.getItem("accessToken");
+      
+      // Check for existing session
+      try {
+        const check = await axios.get(
+          `${import.meta.env.VITE_BASE_URL}/api/humanchat/sessions/check/${psychic._id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (check.data.exists) {
+          navigate(`/message/${psychic._id}`, {
+            state: {
+              chatSession: check.data.session,
+              psychic: psychic,
+              fromHome: true,
+              timestamp: Date.now()
+            }
+          });
+          return;
+        }
+      } catch (checkError) {
+        console.log("No existing session found, creating new one");
+      }
+      
+      // Create new session
+      const response = await axios.post(
+        `${import.meta.env.VITE_BASE_URL}/api/humanchat/sessions`,
+        { psychicId: psychic._id },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      
+      if (response.data.success) {
+        navigate(`/message/${psychic._id}`, {
+          state: {
+            chatSession: response.data.chatSession,
+            psychic: psychic,
+            fromHome: true,
+            timestamp: Date.now()
+          }
+        });
+        toast.success("Chat session started!");
+      } else {
+        toast.error(response.data.message || "Failed to start chat.");
+      }
     } catch (error) {
-      console.error("Error:", error);
-      toast.error("Error initiating chat");
+      console.error("Chat session error:", error);
+      toast.error(error.response?.data?.message || "Failed to start chat. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // Handle audio call initiation
+  const initiateAudioCall = async (psychic) => {
+    if (!user) {
+      toast.error("Please log in to start a call");
+      navigate("/login");
+      return;
+    }
+
+    const psychicStatus = getPsychicStatus(psychic._id);
+    const isAvailable = isPsychicAvailable(psychic._id);
+
+    if (!isAvailable) {
+      toast.error(`This psychic is currently ${psychicStatus.toLowerCase()}. Please try again later.`);
+      return;
+    }
+
+    setIsSubmitting(true);
+    
+    try {
+      const token = localStorage.getItem("accessToken");
+      
+      const response = await axios.post(
+        `${import.meta.env.VITE_BASE_URL}/api/calls/initiate/${psychic._id}`,
+        {},
+        { 
+          headers: { Authorization: `Bearer ${token}` },
+          withCredentials: true
+        }
+      );
+      
+      if (response.data.success) {
+        const { callRequestId, callSessionId, roomName, expiresAt, isFreeSession } = response.data.data;
+        
+        navigate(`/audio-call/${callSessionId}`, {
+          state: {
+            callSessionId,
+            callRequestId,
+            roomName,
+            psychic,
+            isFreeSession,
+            expiresAt,
+            user,
+            fromHome: true,
+            status: 'initiated'
+          }
+        });
+        
+        toast.success("Call initiated! Waiting for psychic to accept...");
+      } else {
+        toast.error(response.data.message || "Failed to initiate call");
+      }
+    } catch (error) {
+      console.error("Error initiating audio call:", error);
+      
+      if (error.response?.status === 400) {
+        if (error.response?.data?.message?.includes('active call')) {
+          toast.error("You already have an active call. Please end it first.");
+        } else if (error.response?.data?.message?.includes('not available')) {
+          toast.error("Psychic is not available for calls at the moment.");
+        } else {
+          toast.error(error.response?.data?.message || "Failed to start call");
+        }
+      } else if (error.response?.status === 404) {
+        toast.error("Psychic not found.");
+      } else if (error.response?.status === 403) {
+        toast.error("Insufficient credits to start a call.");
+      } else {
+        toast.error("Failed to start audio call. Please try again.");
+      }
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -533,6 +774,16 @@ const Psychics = () => {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.softIvory }}>
+      {/* Connection Status */}
+      {!socketConnected && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50">
+          <Badge className="px-3 py-1 bg-yellow-500 text-white rounded-full flex items-center gap-2">
+            <WifiOff className="h-3 w-3" />
+            Connecting to real-time updates...
+          </Badge>
+        </div>
+      )}
+
       {/* Hero Header */}
       <div 
         className="relative py-16 px-4 overflow-hidden"
@@ -638,41 +889,7 @@ const Psychics = () => {
             {/* Filter Controls */}
             <div className="flex flex-wrap gap-2">
               {/* Sort Dropdown */}
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="outline" className="rounded-full gap-2"
-                    style={{ borderColor: colors.antiqueGold, color: colors.deepPurple }}>
-                    {sortOrder === "desc" ? <SortDesc className="h-4 w-4" /> : <SortAsc className="h-4 w-4" />}
-                    Sort: {sortOptions.find(o => o.id === sortBy)?.label}
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent style={{ backgroundColor: colors.softIvory, borderColor: colors.lightGold }}>
-                  <DropdownMenuLabel>Sort By</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  {sortOptions.map((option) => (
-                    <DropdownMenuCheckboxItem
-                      key={option.id}
-                      checked={sortBy === option.id}
-                      onCheckedChange={() => setSortBy(option.id)}
-                      style={{ color: colors.deepPurple }}
-                    >
-                      {option.label}
-                    </DropdownMenuCheckboxItem>
-                  ))}
-                  <DropdownMenuSeparator />
-                  <div className="p-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
-                      className="w-full"
-                      style={{ borderColor: colors.antiqueGold, color: colors.deepPurple }}
-                    >
-                      {sortOrder === "desc" ? "Ascending" : "Descending"}
-                    </Button>
-                  </div>
-                </DropdownMenuContent>
-              </DropdownMenu>
+             
 
               {/* Availability Filter */}
               <Button
@@ -691,7 +908,7 @@ const Psychics = () => {
               </Button>
 
               {/* Clear Filters */}
-              {(searchQuery || selectedCategories.length > 0 || availableOnly) && (
+              {(searchQuery || selectedCategories.length > 1 || availableOnly) && (
                 <Button
                   variant="ghost"
                   onClick={() => {
@@ -710,35 +927,81 @@ const Psychics = () => {
             </div>
           </div>
 
-          {/* Categories Filter */}
-          <div className="mt-4 overflow-x-auto">
-            <div className="flex gap-2 pb-2">
-              {categories.map((category) => (
-                <Badge
-                  key={category.id}
-                  variant={selectedCategories.includes(category.id) ? "default" : "outline"}
-                  onClick={() => toggleCategory(category.id)}
-                  className="cursor-pointer rounded-full px-4 py-2 text-sm font-medium transition-all hover:scale-105"
-                  style={{
-                    backgroundColor: selectedCategories.includes(category.id) 
-                      ? colors.antiqueGold 
-                      : colors.softIvory,
-                    color: selectedCategories.includes(category.id) 
-                      ? colors.deepPurple 
-                      : colors.deepPurple + "CC",
-                    borderColor: colors.lightGold,
-                    whiteSpace: "nowrap"
-                  }}
-                >
-                  <span className="mr-2">{category.icon}</span>
-                  {category.label}
-                  {selectedCategories.includes(category.id) && (
-                    <Check className="ml-2 h-3 w-3" />
-                  )}
-                </Badge>
-              ))}
-            </div>
-          </div>
+          {/* Categories Filter - Show category counts */}
+         
+
+          {/* Advanced Filters (expandable) */}
+          <AnimatePresence>
+            {showFilters && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className="mt-4 pt-4 border-t overflow-hidden"
+                style={{ borderColor: colors.lightGold }}
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Price Range Filter */}
+                  <div>
+                    <label className="text-sm font-medium block mb-2" style={{ color: colors.deepPurple }}>
+                      Price Range (per minute)
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={priceRange[0]}
+                        onChange={(e) => setPriceRange([parseFloat(e.target.value) || 0, priceRange[1]])}
+                        className="w-24 text-center rounded-full"
+                        style={{ borderColor: colors.lightGold }}
+                      />
+                      <span style={{ color: colors.deepPurple }}>to</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="20"
+                        value={priceRange[1]}
+                        onChange={(e) => setPriceRange([priceRange[0], parseFloat(e.target.value) || 10])}
+                        className="w-24 text-center rounded-full"
+                        style={{ borderColor: colors.lightGold }}
+                      />
+                      <span className="text-sm" style={{ color: colors.deepPurple + "CC" }}>USD</span>
+                    </div>
+                  </div>
+
+                  {/* Experience Range Filter */}
+                  <div>
+                    <label className="text-sm font-medium block mb-2" style={{ color: colors.deepPurple }}>
+                      Experience (years)
+                    </label>
+                    <div className="flex items-center gap-4">
+                      <Input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={experienceRange[0]}
+                        onChange={(e) => setExperienceRange([parseFloat(e.target.value) || 0, experienceRange[1]])}
+                        className="w-24 text-center rounded-full"
+                        style={{ borderColor: colors.lightGold }}
+                      />
+                      <span style={{ color: colors.deepPurple }}>to</span>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="50"
+                        value={experienceRange[1]}
+                        onChange={(e) => setExperienceRange([experienceRange[0], parseFloat(e.target.value) || 30])}
+                        className="w-24 text-center rounded-full"
+                        style={{ borderColor: colors.lightGold }}
+                      />
+                      <span className="text-sm" style={{ color: colors.deepPurple + "CC" }}>years</span>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -754,7 +1017,7 @@ const Psychics = () => {
             </div>
             <div className="text-center">
               <div className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                {psychics.filter(p => p.isAvailable).length}
+                {psychics.filter(p => isPsychicAvailable(p._id)).length}
               </div>
               <div className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Available Now</div>
             </div>
@@ -804,299 +1067,345 @@ const Psychics = () => {
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
               <AnimatePresence>
-                {displayedPsychics.map((psychic, index) => (
-                  <motion.div
-                    key={psychic._id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -20 }}
-                    transition={{ delay: index * 0.05 }}
-                    layout
-                    className="relative group"
-                  >
-                    {/* Psychic Card - Similar to Home Page */}
-                    <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
-                      style={{ 
-                        background: `linear-gradient(135deg, ${colors.antiqueGold}, ${colors.deepPurple})`,
-                        transform: "translateY(10px) scale(1.02)"
-                      }}></div>
-                    <div className="relative bg-white rounded-2xl shadow-xl overflow-hidden transition-all duration-300 group-hover:-translate-y-2"
-                      style={{ border: `1px solid ${colors.antiqueGold}30` }}>
-                      
-                      {/* Status & Verification Badge */}
-                      <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
-                        {/* Online Status */}
-                        <Badge className="px-3 py-1 rounded-full flex items-center gap-1"
-                          style={{ 
-                            backgroundColor: psychic.isAvailable ? colors.antiqueGold : "#94a3b8",
-                            color: psychic.isAvailable ? colors.deepPurple : "white"
-                          }}>
-                          <div className={`w-2 h-2 rounded-full ${psychic.isAvailable ? 'bg-green-500' : 'bg-gray-400'}`}></div>
-                          <span className="text-xs font-medium">
-                            {psychic.isAvailable ? "Available" : "Away"}
-                          </span>
-                        </Badge>
+                {displayedPsychics.map((psychic, index) => {
+                  const psychicStatus = getPsychicStatus(psychic._id);
+                  const isAvailable = isPsychicAvailable(psychic._id);
+                  const rating = ratingSummaries[psychic._id] || psychic.rating || { avgRating: 4.5, totalReviews: 100 };
+                  const psychicCategory = getPsychicCategory(psychic);
+                  
+                  return (
+                    <motion.div
+                      key={psychic._id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -20 }}
+                      transition={{ delay: index * 0.05 }}
+                      layout
+                      className="relative group"
+                    >
+                      {/* Psychic Card */}
+                      <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+                        style={{ 
+                          background: `linear-gradient(135deg, ${colors.antiqueGold}, ${colors.deepPurple})`,
+                          transform: "translateY(10px) scale(1.02)"
+                        }}></div>
+                      <div className="relative bg-white rounded-2xl shadow-xl overflow-hidden transition-all duration-300 group-hover:-translate-y-2"
+                        style={{ border: `1px solid ${colors.antiqueGold}30` }}>
                         
-                        {/* Verification Badge */}
-                        {psychic.isVerified && (
+                        {/* Status & Verification Badge */}
+                        <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
+                          {/* Online Status with real-time updates */}
+                          <Badge className="px-3 py-1 rounded-full flex items-center gap-1"
+                            style={{ 
+                              backgroundColor: getStatusBadgeColor(psychicStatus).split(' ')[0],
+                              color: 'white'
+                            }}>
+                            {getStatusIcon(psychicStatus)}
+                            <span className="text-xs font-medium">{getStatusText(psychicStatus)}</span>
+                          </Badge>
+                          
+                          {/* Verification Badge */}
+                          {psychic.isVerified && (
+                            <Badge className="px-2 py-1 rounded-full text-xs"
+                              style={{ 
+                                backgroundColor: colors.deepPurple + "10", 
+                                color: colors.deepPurple,
+                                border: `1px solid ${colors.deepPurple}30`
+                              }}>
+                              <Shield className="h-3 w-3 mr-1" />
+                              Verified
+                            </Badge>
+                          )}
+                          
+                          {/* Category Badge - Always show with default */}
                           <Badge className="px-2 py-1 rounded-full text-xs"
                             style={{ 
-                              backgroundColor: colors.deepPurple + "10", 
+                              backgroundColor: colors.antiqueGold + "10", 
                               color: colors.deepPurple,
-                              border: `1px solid ${colors.deepPurple}30`
+                              border: `1px solid ${colors.antiqueGold}30`
                             }}>
-                            <Shield className="h-3 w-3 mr-1" />
-                            Verified
+                            {psychicCategory}
                           </Badge>
-                        )}
-                      </div>
-                      
-                      {/* Psychic Image */}
-                      <div className="relative h-48 overflow-hidden">
-                        <img
-                          src={psychic.image}
-                          alt={psychic.name}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                        <div className="absolute bottom-4 left-4">
-                          <h3 className="text-2xl font-bold text-white">{psychic.name}</h3>
-                          <div className="flex items-center gap-2 mt-1">
-                            <p className="text-sm text-white/90">{psychic.specialty || "Psychic Reader"}</p>
-                            {psychic.gender && (
-                              <Badge variant="outline" className="text-xs border-white/30 text-white/80">
-                                {psychic.gender.charAt(0).toUpperCase() + psychic.gender.slice(1)}
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      
-                      {/* Details */}
-                      <div className="p-6">
-                        {/* Rating and Price */}
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center">
-                            <div className="flex mr-2">
-                              {renderStars(psychic.rating?.avgRating || 4.5)}
-                            </div>
-                            <span className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
-                              {psychic.rating?.avgRating?.toFixed(1) || "4.5"}
-                              <span className="text-xs ml-1">({psychic.rating?.totalReviews || "100+"})</span>
-                            </span>
-                          </div>
-                          
-                          {/* Rate per minute */}
-                          <div className="text-right">
-                            <div className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                              ${psychic.ratePerMin?.toFixed(2) || "1.00"}
-                            </div>
-                            <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>per minute</div>
-                          </div>
                         </div>
                         
-                        {/* Bio */}
-                        <div className="mb-4">
-                          <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
-                            {psychic.bio || "Experienced psychic with compassionate approach..."}
-                          </p>
-                        </div>
-                        
-                        {/* Quick Stats */}
-                        <div className="grid grid-cols-2 gap-3 mb-4">
-                          <div className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: colors.softIvory }}>
-                            <Clock className="h-3 w-3" style={{ color: colors.antiqueGold }} />
-                            <div>
-                              <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Response</div>
-                              <div className="text-sm font-medium" style={{ color: colors.deepPurple }}>Instant</div>
-                            </div>
-                          </div>
-                          
-                          <div className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: colors.softIvory }}>
-                            <Users className="h-3 w-3" style={{ color: colors.antiqueGold }} />
-                            <div>
-                              <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Experience</div>
-                              <div className="text-sm font-medium" style={{ color: colors.deepPurple }}>
-                                {psychic.experienceYears || "3+"} years
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                        
-                        {/* Action Buttons */}
-                        <div className="space-y-3">
-                          <div className="grid grid-cols-2 gap-3">
-                            <Button
-                              onClick={() => handlePsychicSelect(psychic, 'chat')}
-                              disabled={isSubmitting || !psychic.isAvailable}
-                              className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
-                              style={{ 
-                                backgroundColor: colors.deepPurple,
-                                color: colors.softIvory
-                              }}
-                            >
-                              <MessageCircle className="mr-2 h-4 w-4" />
-                              Chat
-                            </Button>
-                            
-                            <Button
-                              onClick={() => handlePsychicSelect(psychic, 'call')}
-                              disabled={isSubmitting || !psychic.isAvailable}
-                              className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
-                              style={{ 
-                                backgroundColor: colors.antiqueGold,
-                                color: colors.deepPurple
-                              }}
-                            >
-                              <Phone className="mr-2 h-4 w-4" />
-                              Call
-                            </Button>
-                          </div>
-                          
-                          {/* Rate Info */}
-                          <div className="text-center text-sm" style={{ color: colors.deepPurple + "CC" }}>
-                            ${psychic.ratePerMin?.toFixed(2) || "1.00"}/min for both chat & call
-                          </div>
-                          
-                          <div className="flex gap-2">
-                            <Button
-                              variant="outline"
-                              onClick={() => navigate(`/psychic/${psychic._id}`)}
-                              className="flex-1 rounded-full py-3 font-medium"
-                              style={{ 
-                                borderColor: colors.antiqueGold,
-                                color: colors.deepPurple
-                              }}
-                            >
-                              <User className="mr-2 h-4 w-4" />
-                              Profile
-                            </Button>
-                            
-                            <Button
-                              variant="ghost"
-                              onClick={() => togglePsychicDetails(psychic._id)}
-                              className="px-3 rounded-full"
-                              style={{ color: colors.deepPurple }}
-                            >
-                              {expandedPsychic === psychic._id ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
+                        {/* Psychic Image */}
+                        <div className="relative h-48 overflow-hidden">
+                          <img
+                            src={psychic.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`}
+                            alt={psychic.name}
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            onError={(e) => {
+                              e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`;
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
+                          <div className="absolute bottom-4 left-4">
+                            <h3 className="text-2xl font-bold text-white">{psychic.name}</h3>
+                            <div className="flex items-center gap-2 mt-1">
+                              <p className="text-sm text-white/90">{psychic.specialty || psychicCategory}</p>
+                              {psychic.gender && (
+                                <Badge variant="outline" className="text-xs border-white/30 text-white/80">
+                                  {psychic.gender.charAt(0).toUpperCase() + psychic.gender.slice(1)}
+                                </Badge>
                               )}
-                            </Button>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      
-                      {/* Member Since */}
-                      {psychic.createdAt && (
-                        <div className="px-6 py-3 border-t text-center text-xs" 
-                          style={{ borderColor: colors.antiqueGold + "30", color: colors.deepPurple + "CC" }}>
-                          Member since {new Date(psychic.createdAt).toLocaleDateString('en-US', { 
-                            month: 'short', 
-                            year: 'numeric' 
-                          })}
-                        </div>
-                      )}
-                      
-                      {/* Expanded Details */}
-                      <AnimatePresence>
-                        {expandedPsychic === psychic._id && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="border-t"
-                            style={{ borderColor: colors.lightGold }}
-                          >
-                            <div className="p-6">
-                              {/* Specialties */}
-                              <div className="mb-4">
-                                <h4 className="font-semibold mb-2 text-sm" style={{ color: colors.deepPurple }}>
-                                  Specialties
-                                </h4>
-                                <div className="flex flex-wrap gap-2">
-                                  {psychic.modalities?.map((modality, idx) => (
-                                    <Badge
-                                      key={idx}
-                                      variant="outline"
-                                      className="text-xs rounded-full px-3 py-1"
-                                      style={{ 
-                                        borderColor: colors.antiqueGold + "50", 
-                                        color: colors.deepPurple + "CC"
-                                      }}
-                                    >
-                                      {modality}
-                                    </Badge>
-                                  ))}
+                        
+                        {/* Details */}
+                        <div className="p-6">
+                          {/* Rating and Price */}
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center">
+                              <div className="flex mr-2">
+                                {renderStars(rating.avgRating)}
+                              </div>
+                              <span className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
+                                {rating.avgRating?.toFixed(1) || "4.5"}
+                                <span className="text-xs ml-1">({rating.totalReviews || "100+"})</span>
+                              </span>
+                            </div>
+                            
+                            {/* Rate per minute */}
+                            <div className="text-right">
+                              <div className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                                ${psychic.ratePerMin?.toFixed(2) || "1.00"}
+                              </div>
+                              <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>per minute</div>
+                            </div>
+                          </div>
+                          
+                          {/* Bio */}
+                          <div className="mb-4">
+                            <p className="text-sm line-clamp-2" style={{ color: colors.deepPurple + "CC" }}>
+                              {psychic.bio || "Experienced psychic with compassionate approach..."}
+                            </p>
+                          </div>
+                          
+                          {/* Quick Stats */}
+                          <div className="grid grid-cols-2 gap-3 mb-4">
+                            <div className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: colors.softIvory }}>
+                              <Clock className="h-3 w-3" style={{ color: colors.antiqueGold }} />
+                              <div>
+                                <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Response</div>
+                                <div className="text-sm font-medium" style={{ color: colors.deepPurple }}>
+                                  {psychic.responseTime ? `${psychic.responseTime} min` : "Instant"}
                                 </div>
                               </div>
-
-                              {/* Languages */}
-                              {psychic.languages && psychic.languages.length > 0 && (
-                                <div className="mb-4">
-                                  <h4 className="font-semibold mb-2 text-sm" style={{ color: colors.deepPurple }}>
-                                    Languages
-                                  </h4>
-                                  <div className="flex flex-wrap gap-2">
-                                    {psychic.languages.map((lang, idx) => (
-                                      <Badge
-                                        key={idx}
-                                        variant="outline"
-                                        className="text-xs rounded-full px-3 py-1"
-                                        style={{ 
-                                          borderColor: colors.antiqueGold + "50", 
-                                          color: colors.deepPurple + "CC"
-                                        }}
-                                      >
-                                        <Globe className="h-3 w-3 mr-1" />
-                                        {lang}
-                                      </Badge>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Additional Info */}
-                              <div className="grid grid-cols-2 gap-4 mb-4">
-                                <div>
-                                  <h4 className="font-semibold mb-1 text-xs" style={{ color: colors.deepPurple + "CC" }}>
-                                    Success Rate
-                                  </h4>
-                                  <div className="text-lg font-bold" style={{ color: colors.deepPurple }}>
-                                    {psychic.successRate || "95"}%
-                                  </div>
-                                </div>
-                                <div>
-                                  <h4 className="font-semibold mb-1 text-xs" style={{ color: colors.deepPurple + "CC" }}>
-                                    Clients Helped
-                                  </h4>
-                                  <div className="text-lg font-bold" style={{ color: colors.deepPurple }}>
-                                    {psychic.clientsHelped || "500+"}
-                                  </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: colors.softIvory }}>
+                              <Users className="h-3 w-3" style={{ color: colors.antiqueGold }} />
+                              <div>
+                                <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Experience</div>
+                                <div className="text-sm font-medium" style={{ color: colors.deepPurple }}>
+                                  {psychic.experienceYears || psychic.experience || "3"}+ years
                                 </div>
                               </div>
-
-                              {/* View Full Profile Button */}
+                            </div>
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="space-y-3">
+                            <div className="grid grid-cols-2 gap-3">
+                              <Button
+                                onClick={() => handlePsychicSelect(psychic)}
+                                disabled={isSubmitting || !isAvailable}
+                                className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
+                                style={{ 
+                                  backgroundColor: colors.deepPurple,
+                                  color: colors.softIvory
+                                }}
+                              >
+                                <MessageCircle className="mr-2 h-4 w-4" />
+                                Chat
+                              </Button>
+                              
+                              <Button
+                                onClick={() => initiateAudioCall(psychic)}
+                                disabled={isSubmitting || !isAvailable}
+                                className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
+                                style={{ 
+                                  backgroundColor: colors.antiqueGold,
+                                  color: colors.deepPurple
+                                }}
+                              >
+                                <Phone className="mr-2 h-4 w-4" />
+                                Call
+                              </Button>
+                            </div>
+                            
+                            {/* Rate Info */}
+                            <div className="text-center text-sm" style={{ color: colors.deepPurple + "CC" }}>
+                              ${psychic.ratePerMin?.toFixed(2) || "1.00"}/min for both chat & call
+                            </div>
+                            
+                            <div className="flex gap-2">
                               <Button
                                 variant="outline"
                                 onClick={() => navigate(`/psychic/${psychic._id}`)}
-                                className="w-full rounded-full py-3"
+                                className="flex-1 rounded-full py-3 font-medium"
                                 style={{ 
                                   borderColor: colors.antiqueGold,
                                   color: colors.deepPurple
                                 }}
                               >
-                                View Complete Profile & Reviews
+                                <User className="mr-2 h-4 w-4" />
+                                Profile
+                              </Button>
+                              
+                              <Button
+                                variant="ghost"
+                                onClick={() => togglePsychicDetails(psychic._id)}
+                                className="px-3 rounded-full"
+                                style={{ color: colors.deepPurple }}
+                              >
+                                {expandedPsychic === psychic._id ? (
+                                  <ChevronUp className="h-4 w-4" />
+                                ) : (
+                                  <ChevronDown className="h-4 w-4" />
+                                )}
                               </Button>
                             </div>
-                          </motion.div>
+                          </div>
+                        </div>
+                        
+                        {/* Status Message */}
+                        {!isAvailable && (
+                          <div className="px-6 py-2 text-center text-xs"
+                            style={{ backgroundColor: colors.lightGold + "50", color: colors.deepPurple + "CC" }}>
+                            {psychicStatus === 'offline' 
+                              ? "This psychic is currently offline"
+                              : psychicStatus === 'busy'
+                              ? "This psychic is currently busy"
+                              : "Currently unavailable"}
+                          </div>
                         )}
-                      </AnimatePresence>
-                    </div>
-                  </motion.div>
-                ))}
+                        
+                        {/* Member Since */}
+                        {psychic.createdAt && (
+                          <div className="px-6 py-3 border-t text-center text-xs" 
+                            style={{ borderColor: colors.antiqueGold + "30", color: colors.deepPurple + "CC" }}>
+                            Member since {new Date(psychic.createdAt).toLocaleDateString('en-US', { 
+                              month: 'short', 
+                              year: 'numeric' 
+                            })}
+                          </div>
+                        )}
+                        
+                        {/* Expanded Details */}
+                        <AnimatePresence>
+                          {expandedPsychic === psychic._id && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.3 }}
+                              className="border-t"
+                              style={{ borderColor: colors.lightGold }}
+                            >
+                              <div className="p-6">
+                                {/* Specialties */}
+                                {psychic.modalities && psychic.modalities.length > 0 && (
+                                  <div className="mb-4">
+                                    <h4 className="font-semibold mb-2 text-sm" style={{ color: colors.deepPurple }}>
+                                      Specialties
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                      {psychic.modalities.slice(0, 5).map((modality, idx) => (
+                                        <Badge
+                                          key={idx}
+                                          variant="outline"
+                                          className="text-xs rounded-full px-3 py-1"
+                                          style={{ 
+                                            borderColor: colors.antiqueGold + "50", 
+                                            color: colors.deepPurple + "CC"
+                                          }}
+                                        >
+                                          {modality}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Languages */}
+                                {psychic.languages && psychic.languages.length > 0 && (
+                                  <div className="mb-4">
+                                    <h4 className="font-semibold mb-2 text-sm" style={{ color: colors.deepPurple }}>
+                                      Languages
+                                    </h4>
+                                    <div className="flex flex-wrap gap-2">
+                                      {psychic.languages.map((lang, idx) => (
+                                        <Badge
+                                          key={idx}
+                                          variant="outline"
+                                          className="text-xs rounded-full px-3 py-1"
+                                          style={{ 
+                                            borderColor: colors.antiqueGold + "50", 
+                                            color: colors.deepPurple + "CC"
+                                          }}
+                                        >
+                                          <Globe className="h-3 w-3 mr-1" />
+                                          {lang}
+                                        </Badge>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Additional Info */}
+                                <div className="grid grid-cols-2 gap-4 mb-4">
+                                  <div>
+                                    <h4 className="font-semibold mb-1 text-xs" style={{ color: colors.deepPurple + "CC" }}>
+                                      Success Rate
+                                    </h4>
+                                    <div className="text-lg font-bold" style={{ color: colors.deepPurple }}>
+                                      {psychic.successRate || "95"}%
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <h4 className="font-semibold mb-1 text-xs" style={{ color: colors.deepPurple + "CC" }}>
+                                      Clients Helped
+                                    </h4>
+                                    <div className="text-lg font-bold" style={{ color: colors.deepPurple }}>
+                                      {psychic.clientsHelped || "500+"}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Full Bio */}
+                                {psychic.bio && (
+                                  <div className="mb-4">
+                                    <h4 className="font-semibold mb-2 text-sm" style={{ color: colors.deepPurple }}>
+                                      About
+                                    </h4>
+                                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
+                                      {psychic.bio}
+                                    </p>
+                                  </div>
+                                )}
+
+                                {/* View Full Profile Button */}
+                                <Button
+                                  variant="outline"
+                                  onClick={() => navigate(`/psychic/${psychic._id}`)}
+                                  className="w-full rounded-full py-3"
+                                  style={{ 
+                                    borderColor: colors.antiqueGold,
+                                    color: colors.deepPurple
+                                  }}
+                                >
+                                  View Complete Profile & Reviews
+                                </Button>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </AnimatePresence>
             </div>
 
@@ -1122,7 +1431,7 @@ const Psychics = () => {
                     </>
                   ) : (
                     <>
-                      Load 3 More Psychics
+                      Load More Psychics
                       <ChevronRight className="ml-2 h-5 w-5" />
                     </>
                   )}
@@ -1152,17 +1461,17 @@ const Psychics = () => {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               {
-                icon: <Shield />,
+                icon: <Shield className="h-8 w-8" />,
                 title: "Rigorous Vetting",
                 description: "Every psychic undergoes extensive screening, testing, and background checks."
               },
               {
-                icon: <Heart />,
+                icon: <Heart className="h-8 w-8" />,
                 title: "Empathetic Approach",
                 description: "Our psychics provide compassionate guidance in a judgment-free space."
               },
               {
-                icon: <Award />,
+                icon: <Award className="h-8 w-8" />,
                 title: "Proven Accuracy",
                 description: "High client satisfaction rates and consistent positive feedback."
               }

@@ -5,6 +5,8 @@ const Notification = require('../../models/Paidtimer/Notification');
 const Wallet = require('../../models/Wallet');
 const User = require('../../models/User');
 const Psychic = require('../../models/HumanChat/Psychic');
+const ActiveCallSession = require('../../models/CallSession/ActiveCallSession');
+
 const mongoose = require('mongoose');
 // Helper function for wallet locking/unlocking
 const handleWalletLock = async (userId, callback) => {
@@ -1438,7 +1440,9 @@ exports.getPsychicActiveSession = async (req, res) => {
 };
 // Get psychic earnings
 
-// Get psychic total earnings with detailed breakdown
+
+
+// Get psychic earnings from both chat and call sessions
 exports.getPsychicEarnings = async (req, res) => {
   try {
     const psychicId = req.user._id;
@@ -1449,92 +1453,193 @@ exports.getPsychicEarnings = async (req, res) => {
     const weeklyStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthlyStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    // Fetch sessions for different time periods
-    const [dailySessions, weeklySessions, monthlySessions, allTimeSessions] = await Promise.all([
+    // Fetch chat sessions for different time periods - UPDATED to use username
+    const [dailyChats, weeklyChats, monthlyChats, allTimeChats] = await Promise.all([
       ChatRequest.find({
         psychic: psychicId,
         status: 'completed',
         endedAt: { $gte: dailyStart }
-      }).populate('user', 'firstName lastName email image'),
+      }).populate('user', 'username email image'), // Changed from firstName lastName to username
       
       ChatRequest.find({
         psychic: psychicId,
         status: 'completed',
         endedAt: { $gte: weeklyStart }
-      }).populate('user', 'firstName lastName email image'),
+      }).populate('user', 'username email image'), // Changed
       
       ChatRequest.find({
         psychic: psychicId,
         status: 'completed',
         endedAt: { $gte: monthlyStart }
-      }).populate('user', 'firstName lastName email image'),
+      }).populate('user', 'username email image'), // Changed
       
       ChatRequest.find({
         psychic: psychicId,
         status: 'completed'
-      }).populate('user', 'firstName lastName email image')
+      }).populate('user', 'username email image') // Changed
     ]);
     
-    // Calculate earnings
-    const calculateEarnings = (sessions) => {
-      return sessions.reduce((total, session) => {
+    // Fetch call sessions for different time periods - UPDATED to use username
+    const [dailyCalls, weeklyCalls, monthlyCalls, allTimeCalls] = await Promise.all([
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        status: 'ended',
+        endTime: { $gte: dailyStart }
+      }).populate('userId', 'username email image'), // Changed from firstName lastName to username
+      
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        status: 'ended',
+        endTime: { $gte: weeklyStart }
+      }).populate('userId', 'username email image'), // Changed
+      
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        status: 'ended',
+        endTime: { $gte: monthlyStart }
+      }).populate('userId', 'username email image'), // Changed
+      
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        status: 'ended'
+      }).populate('userId', 'username email image') // Changed
+    ]);
+    
+    // Calculate earnings from both types
+    const calculateEarnings = (chats, calls) => {
+      const chatEarnings = chats.reduce((total, session) => {
         return total + (session.totalAmountPaid || 0);
       }, 0);
+      
+      // Convert credits to dollars (1 credit = $1)
+      const callEarnings = calls.reduce((total, session) => {
+        return total + (session.totalCreditsUsed || 0);
+      }, 0);
+      
+      return {
+        total: chatEarnings + callEarnings,
+        chats: chatEarnings,
+        calls: callEarnings
+      };
     };
     
     // Calculate time breakdown
-    const calculateTimeBreakdown = (sessions) => {
-      return sessions.reduce((total, session) => {
+    const calculateTimeBreakdown = (chats, calls) => {
+      const chatTime = chats.reduce((total, session) => {
         const secondsUsed = session.totalSecondsAllowed - (session.paidSession?.remainingSeconds || 0);
         return total + (secondsUsed || 0);
       }, 0);
+      
+      const callTime = calls.reduce((total, session) => {
+        if (session.startTime && session.endTime) {
+          return total + (new Date(session.endTime) - new Date(session.startTime)) / 1000;
+        }
+        return total;
+      }, 0);
+      
+      return {
+        total: chatTime + callTime,
+        chats: chatTime,
+        calls: callTime
+      };
     };
     
-    // Get earnings by user
+    // Get earnings by user (combining chat and call sessions)
     const userEarningsMap = {};
-    allTimeSessions.forEach(session => {
+    
+    // Process chat sessions - UPDATED to use username
+    allTimeChats.forEach(session => {
       const userId = session.user._id.toString();
       if (!userEarningsMap[userId]) {
         userEarningsMap[userId] = {
-          user: session.user,
+          user: {
+            _id: session.user._id,
+            username: session.user.username || 'Anonymous User', // Use username
+            email: session.user.email,
+            image: session.user.image
+          },
           totalEarnings: 0,
+          chatEarnings: 0,
+          callEarnings: 0,
           totalSessions: 0,
+          chatSessions: 0,
+          callSessions: 0,
           totalTime: 0
         };
       }
       userEarningsMap[userId].totalEarnings += session.totalAmountPaid || 0;
+      userEarningsMap[userId].chatEarnings += session.totalAmountPaid || 0;
       userEarningsMap[userId].totalSessions += 1;
+      userEarningsMap[userId].chatSessions += 1;
       const secondsUsed = session.totalSecondsAllowed - (session.paidSession?.remainingSeconds || 0);
       userEarningsMap[userId].totalTime += secondsUsed;
     });
     
-    // Convert to array and sort
+    // Process call sessions - UPDATED to use username
+    allTimeCalls.forEach(session => {
+      const userId = session.userId._id.toString();
+      if (!userEarningsMap[userId]) {
+        userEarningsMap[userId] = {
+          user: {
+            _id: session.userId._id,
+            username: session.userId.username || 'Anonymous User', // Use username
+            email: session.userId.email,
+            image: session.userId.image
+          },
+          totalEarnings: 0,
+          chatEarnings: 0,
+          callEarnings: 0,
+          totalSessions: 0,
+          chatSessions: 0,
+          callSessions: 0,
+          totalTime: 0
+        };
+      }
+      
+      // Convert credits to dollars (1 credit = $1)
+      const earningsInDollars = session.totalCreditsUsed || 0;
+      
+      userEarningsMap[userId].totalEarnings += earningsInDollars;
+      userEarningsMap[userId].callEarnings += earningsInDollars;
+      userEarningsMap[userId].totalSessions += 1;
+      userEarningsMap[userId].callSessions += 1;
+      
+      if (session.startTime && session.endTime) {
+        const secondsUsed = (new Date(session.endTime) - new Date(session.startTime)) / 1000;
+        userEarningsMap[userId].totalTime += secondsUsed;
+      }
+    });
+    
+    // Convert to array and sort - UPDATED to use username
     const userEarnings = Object.values(userEarningsMap)
       .sort((a, b) => b.totalEarnings - a.totalEarnings)
       .map(item => ({
         user: {
           _id: item.user._id,
-          firstName: item.user.firstName,
-          lastName: item.user.lastName,
+          username: item.user.username, // Use username
           email: item.user.email,
           image: item.user.image
         },
         totalEarnings: item.totalEarnings,
+        chatEarnings: item.chatEarnings,
+        callEarnings: item.callEarnings,
         totalSessions: item.totalSessions,
+        chatSessions: item.chatSessions,
+        callSessions: item.callSessions,
         totalTimeMinutes: Math.round(item.totalTime / 60),
         avgEarningsPerSession: item.totalSessions > 0 ? item.totalEarnings / item.totalSessions : 0
       }));
     
-    // Get recent sessions
-    const recentSessions = allTimeSessions
+    // Get recent sessions (combined) - UPDATED to use username
+    const recentChatSessions = allTimeChats
       .sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt))
-      .slice(0, 10)
+      .slice(0, 5)
       .map(session => ({
         _id: session._id,
+        type: 'chat',
         user: {
           _id: session.user._id,
-          firstName: session.user.firstName,
-          lastName: session.user.lastName,
+          username: session.user.username || 'Anonymous User', // Use username
           email: session.user.email
         },
         amount: session.totalAmountPaid || 0,
@@ -1543,41 +1648,91 @@ exports.getPsychicEarnings = async (req, res) => {
         ratePerMin: session.ratePerMin || 1
       }));
     
-    // Calculate summary
-    const dailyEarnings = calculateEarnings(dailySessions);
-    const weeklyEarnings = calculateEarnings(weeklySessions);
-    const monthlyEarnings = calculateEarnings(monthlySessions);
-    const allTimeEarnings = calculateEarnings(allTimeSessions);
+    const recentCallSessions = allTimeCalls
+      .sort((a, b) => new Date(b.endTime) - new Date(a.endTime))
+      .slice(0, 5)
+      .map(session => {
+        const durationSeconds = session.startTime && session.endTime 
+          ? (new Date(session.endTime) - new Date(session.startTime)) / 1000 
+          : 0;
+        
+        return {
+          _id: session._id,
+          type: 'call',
+          user: {
+            _id: session.userId._id,
+            username: session.userId.username || 'Anonymous User', // Use username
+            email: session.userId.email
+          },
+          amount: session.totalCreditsUsed || 0,
+          durationMinutes: Math.round(durationSeconds / 60),
+          endedAt: session.endTime,
+          creditsPerMin: session.creditsPerMin || 1
+        };
+      });
     
-    const dailyTime = calculateTimeBreakdown(dailySessions);
-    const weeklyTime = calculateTimeBreakdown(weeklySessions);
-    const monthlyTime = calculateTimeBreakdown(monthlySessions);
-    const allTimeTime = calculateTimeBreakdown(allTimeSessions);
+    // Combine and sort recent sessions
+    const recentSessions = [...recentChatSessions, ...recentCallSessions]
+      .sort((a, b) => new Date(b.endedAt) - new Date(a.endedAt))
+      .slice(0, 10);
+    
+    // Calculate summary
+    const dailyEarnings = calculateEarnings(dailyChats, dailyCalls);
+    const weeklyEarnings = calculateEarnings(weeklyChats, weeklyCalls);
+    const monthlyEarnings = calculateEarnings(monthlyChats, monthlyCalls);
+    const allTimeEarnings = calculateEarnings(allTimeChats, allTimeCalls);
+    
+    const dailyTime = calculateTimeBreakdown(dailyChats, dailyCalls);
+    const weeklyTime = calculateTimeBreakdown(weeklyChats, weeklyCalls);
+    const monthlyTime = calculateTimeBreakdown(monthlyChats, monthlyCalls);
+    const allTimeTime = calculateTimeBreakdown(allTimeChats, allTimeCalls);
+    
+    // Get unique users from both types
+    const uniqueUserIds = new Set([
+      ...allTimeChats.map(s => s.user._id.toString()),
+      ...allTimeCalls.map(s => s.userId._id.toString())
+    ]);
     
     res.json({
       success: true,
       data: {
         summary: {
           daily: {
-            earnings: dailyEarnings,
-            sessions: dailySessions.length,
-            timeMinutes: Math.round(dailyTime / 60)
+            earnings: dailyEarnings.total,
+            chatEarnings: dailyEarnings.chats,
+            callEarnings: dailyEarnings.calls,
+            sessions: dailyChats.length + dailyCalls.length,
+            chatSessions: dailyChats.length,
+            callSessions: dailyCalls.length,
+            timeMinutes: Math.round(dailyTime.total / 60)
           },
           weekly: {
-            earnings: weeklyEarnings,
-            sessions: weeklySessions.length,
-            timeMinutes: Math.round(weeklyTime / 60)
+            earnings: weeklyEarnings.total,
+            chatEarnings: weeklyEarnings.chats,
+            callEarnings: weeklyEarnings.calls,
+            sessions: weeklyChats.length + weeklyCalls.length,
+            chatSessions: weeklyChats.length,
+            callSessions: weeklyCalls.length,
+            timeMinutes: Math.round(weeklyTime.total / 60)
           },
           monthly: {
-            earnings: monthlyEarnings,
-            sessions: monthlySessions.length,
-            timeMinutes: Math.round(monthlyTime / 60)
+            earnings: monthlyEarnings.total,
+            chatEarnings: monthlyEarnings.chats,
+            callEarnings: monthlyEarnings.calls,
+            sessions: monthlyChats.length + monthlyCalls.length,
+            chatSessions: monthlyChats.length,
+            callSessions: monthlyCalls.length,
+            timeMinutes: Math.round(monthlyTime.total / 60)
           },
           allTime: {
-            earnings: allTimeEarnings,
-            sessions: allTimeSessions.length,
-            timeMinutes: Math.round(allTimeTime / 60),
-            totalUsers: new Set(allTimeSessions.map(s => s.user._id.toString())).size
+            earnings: allTimeEarnings.total,
+            chatEarnings: allTimeEarnings.chats,
+            callEarnings: allTimeEarnings.calls,
+            sessions: allTimeChats.length + allTimeCalls.length,
+            chatSessions: allTimeChats.length,
+            callSessions: allTimeCalls.length,
+            timeMinutes: Math.round(allTimeTime.total / 60),
+            totalUsers: uniqueUserIds.size
           }
         },
         userBreakdown: userEarnings,
@@ -1594,7 +1749,7 @@ exports.getPsychicEarnings = async (req, res) => {
   }
 };
 
-// Get psychic earnings from specific user
+// Get psychic earnings from specific user (both chat and call)
 exports.getPsychicEarningsByUserId = async (req, res) => {
   try {
     const psychicId = req.user._id;
@@ -1614,8 +1769,8 @@ exports.getPsychicEarningsByUserId = async (req, res) => {
     const weeklyStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const monthlyStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     
-    // Fetch sessions for this specific user
-    const [dailySessions, weeklySessions, monthlySessions, allSessions] = await Promise.all([
+    // Fetch chat sessions for this specific user
+    const [dailyChats, weeklyChats, monthlyChats, allChats] = await Promise.all([
       ChatRequest.find({
         psychic: psychicId,
         user: userId,
@@ -1641,53 +1796,129 @@ exports.getPsychicEarningsByUserId = async (req, res) => {
       }).sort({ endedAt: -1 })
     ]);
     
+    // Fetch call sessions for this specific user
+    const [dailyCalls, weeklyCalls, monthlyCalls, allCalls] = await Promise.all([
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        userId: userId,
+        status: 'ended',
+        endTime: { $gte: dailyStart }
+      }),
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        userId: userId,
+        status: 'ended',
+        endTime: { $gte: weeklyStart }
+      }),
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        userId: userId,
+        status: 'ended',
+        endTime: { $gte: monthlyStart }
+      }),
+      ActiveCallSession.find({
+        psychicId: psychicId,
+        userId: userId,
+        status: 'ended'
+      }).sort({ endTime: -1 })
+    ]);
+    
     // Calculate earnings
-    const calculateEarnings = (sessions) => {
-      return sessions.reduce((total, session) => {
+    const calculateEarnings = (chats, calls) => {
+      const chatEarnings = chats.reduce((total, session) => {
         return total + (session.totalAmountPaid || 0);
       }, 0);
+      
+      // Convert credits to dollars (1 credit = $1)
+      const callEarnings = calls.reduce((total, session) => {
+        return total + (session.totalCreditsUsed || 0);
+      }, 0);
+      
+      return {
+        total: chatEarnings + callEarnings,
+        chats: chatEarnings,
+        calls: callEarnings
+      };
     };
     
-    const dailyEarnings = calculateEarnings(dailySessions);
-    const weeklyEarnings = calculateEarnings(weeklySessions);
-    const monthlyEarnings = calculateEarnings(monthlySessions);
-    const allTimeEarnings = calculateEarnings(allSessions);
+    const dailyEarnings = calculateEarnings(dailyChats, dailyCalls);
+    const weeklyEarnings = calculateEarnings(weeklyChats, weeklyCalls);
+    const monthlyEarnings = calculateEarnings(monthlyChats, monthlyCalls);
+    const allTimeEarnings = calculateEarnings(allChats, allCalls);
+    
+    // Combine session history - UPDATED to use username
+    const chatHistory = allChats.map(session => ({
+      _id: session._id,
+      type: 'chat',
+      amount: session.totalAmountPaid || 0,
+      durationMinutes: Math.round((session.totalSecondsAllowed - (session.paidSession?.remainingSeconds || 0)) / 60),
+      endTime: session.endedAt,
+      ratePerMin: session.ratePerMin || 1
+    }));
+    
+    const callHistory = allCalls.map(session => {
+      const durationSeconds = session.startTime && session.endTime 
+        ? (new Date(session.endTime) - new Date(session.startTime)) / 1000 
+        : 0;
+      
+      return {
+        _id: session._id,
+        type: 'call',
+        amount: session.totalCreditsUsed || 0,
+        durationMinutes: Math.round(durationSeconds / 60),
+        endTime: session.endTime,
+        creditsPerMin: session.creditsPerMin || 1
+      };
+    });
+    
+    // Combine and sort session history
+    const sessionHistory = [...chatHistory, ...callHistory]
+      .sort((a, b) => new Date(b.endTime) - new Date(a.endTime));
     
     res.json({
       success: true,
       data: {
         user: {
           _id: user._id,
-          firstName: user.firstName,
-          lastName: user.lastName,
+          username: user.username, // Use username instead of firstName/lastName
           email: user.email,
           image: user.image
         },
         earnings: {
           daily: {
-            amount: dailyEarnings,
-            sessions: dailySessions.length
+            amount: dailyEarnings.total,
+            chatAmount: dailyEarnings.chats,
+            callAmount: dailyEarnings.calls,
+            sessions: dailyChats.length + dailyCalls.length,
+            chatSessions: dailyChats.length,
+            callSessions: dailyCalls.length
           },
           weekly: {
-            amount: weeklyEarnings,
-            sessions: weeklySessions.length
+            amount: weeklyEarnings.total,
+            chatAmount: weeklyEarnings.chats,
+            callAmount: weeklyEarnings.calls,
+            sessions: weeklyChats.length + weeklyCalls.length,
+            chatSessions: weeklyChats.length,
+            callSessions: weeklyCalls.length
           },
           monthly: {
-            amount: monthlyEarnings,
-            sessions: monthlySessions.length
+            amount: monthlyEarnings.total,
+            chatAmount: monthlyEarnings.chats,
+            callAmount: monthlyEarnings.calls,
+            sessions: monthlyChats.length + monthlyCalls.length,
+            chatSessions: monthlyChats.length,
+            callSessions: monthlyCalls.length
           },
           allTime: {
-            amount: allTimeEarnings,
-            sessions: allSessions.length
+            amount: allTimeEarnings.total,
+            chatAmount: allTimeEarnings.chats,
+            callAmount: allTimeEarnings.calls,
+            sessions: allChats.length + allCalls.length,
+            chatSessions: allChats.length,
+            callSessions: allCalls.length
           }
         },
-        sessionHistory: allSessions.map(session => ({
-          _id: session._id,
-          amount: session.totalAmountPaid || 0,
-          durationMinutes: Math.round((session.totalSecondsAllowed - (session.paidSession?.remainingSeconds || 0)) / 60),
-          endTime: session.endedAt,
-          ratePerMin: session.ratePerMin || 1
-        }))
+        sessionHistory: sessionHistory
       }
     });
   } catch (error) {
@@ -1700,7 +1931,7 @@ exports.getPsychicEarningsByUserId = async (req, res) => {
   }
 };
 
-// Get psychic earning statistics (for dashboard)
+// Get psychic earning statistics (for dashboard) - includes both chat and call
 exports.getPsychicEarningsStats = async (req, res) => {
   try {
     const psychicId = req.user._id;
@@ -1709,7 +1940,8 @@ exports.getPsychicEarningsStats = async (req, res) => {
     const thisWeekStart = new Date(now.setDate(now.getDate() - now.getDay()));
     const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     
-    const [todayEarnings, weekEarnings, monthEarnings, totalEarnings] = await Promise.all([
+    // Chat sessions aggregation
+    const [todayChats, weekChats, monthChats, totalChats] = await Promise.all([
       ChatRequest.aggregate([
         {
           $match: {
@@ -1776,29 +2008,120 @@ exports.getPsychicEarningsStats = async (req, res) => {
       ])
     ]);
     
+    // Call sessions aggregation - convert credits to dollars
+    const [todayCalls, weekCalls, monthCalls, totalCalls] = await Promise.all([
+      ActiveCallSession.aggregate([
+        {
+          $match: {
+            psychicId: new mongoose.Types.ObjectId(psychicId),
+            status: 'ended',
+            endTime: { $gte: todayStart }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$totalCreditsUsed' },
+            sessions: { $sum: 1 }
+          }
+        }
+      ]),
+      ActiveCallSession.aggregate([
+        {
+          $match: {
+            psychicId: new mongoose.Types.ObjectId(psychicId),
+            status: 'ended',
+            endTime: { $gte: thisWeekStart }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$totalCreditsUsed' },
+            sessions: { $sum: 1 }
+          }
+        }
+      ]),
+      ActiveCallSession.aggregate([
+        {
+          $match: {
+            psychicId: new mongoose.Types.ObjectId(psychicId),
+            status: 'ended',
+            endTime: { $gte: thisMonthStart }
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$totalCreditsUsed' },
+            sessions: { $sum: 1 }
+          }
+        }
+      ]),
+      ActiveCallSession.aggregate([
+        {
+          $match: {
+            psychicId: new mongoose.Types.ObjectId(psychicId),
+            status: 'ended'
+          }
+        },
+        {
+          $group: {
+            _id: null,
+            total: { $sum: '$totalCreditsUsed' },
+            sessions: { $sum: 1 },
+            uniqueUsers: { $addToSet: '$userId' }
+          }
+        }
+      ])
+    ]);
+    
+    // Get unique users from both collections
+    const allUniqueUsers = new Set([
+      ...(totalChats[0]?.uniqueUsers || []).map(id => id.toString()),
+      ...(totalCalls[0]?.uniqueUsers || []).map(id => id.toString())
+    ]);
+    
     res.json({
       success: true,
       data: {
         today: {
-          earnings: todayEarnings[0]?.total || 0,
-          sessions: todayEarnings[0]?.sessions || 0
+          earnings: (todayChats[0]?.total || 0) + (todayCalls[0]?.total || 0),
+          chatEarnings: todayChats[0]?.total || 0,
+          callEarnings: todayCalls[0]?.total || 0,
+          sessions: (todayChats[0]?.sessions || 0) + (todayCalls[0]?.sessions || 0),
+          chatSessions: todayChats[0]?.sessions || 0,
+          callSessions: todayCalls[0]?.sessions || 0
         },
         week: {
-          earnings: weekEarnings[0]?.total || 0,
-          sessions: weekEarnings[0]?.sessions || 0
+          earnings: (weekChats[0]?.total || 0) + (weekCalls[0]?.total || 0),
+          chatEarnings: weekChats[0]?.total || 0,
+          callEarnings: weekCalls[0]?.total || 0,
+          sessions: (weekChats[0]?.sessions || 0) + (weekCalls[0]?.sessions || 0),
+          chatSessions: weekChats[0]?.sessions || 0,
+          callSessions: weekCalls[0]?.sessions || 0
         },
         month: {
-          earnings: monthEarnings[0]?.total || 0,
-          sessions: monthEarnings[0]?.sessions || 0
+          earnings: (monthChats[0]?.total || 0) + (monthCalls[0]?.total || 0),
+          chatEarnings: monthChats[0]?.total || 0,
+          callEarnings: monthCalls[0]?.total || 0,
+          sessions: (monthChats[0]?.sessions || 0) + (monthCalls[0]?.sessions || 0),
+          chatSessions: monthChats[0]?.sessions || 0,
+          callSessions: monthCalls[0]?.sessions || 0
         },
         allTime: {
-          earnings: totalEarnings[0]?.total || 0,
-          sessions: totalEarnings[0]?.sessions || 0,
-          uniqueUsers: totalEarnings[0]?.uniqueUsers?.length || 0
+          earnings: (totalChats[0]?.total || 0) + (totalCalls[0]?.total || 0),
+          chatEarnings: totalChats[0]?.total || 0,
+          callEarnings: totalCalls[0]?.total || 0,
+          sessions: (totalChats[0]?.sessions || 0) + (totalCalls[0]?.sessions || 0),
+          chatSessions: totalChats[0]?.sessions || 0,
+          callSessions: totalCalls[0]?.sessions || 0,
+          uniqueUsers: allUniqueUsers.size
         }
       }
     });
   } catch (error) {
+    console.error('Get psychic earnings stats error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error',
@@ -1806,6 +2129,7 @@ exports.getPsychicEarningsStats = async (req, res) => {
     });
   }
 };
+
 // Get session details for psychic
 exports.getPsychicSessionDetails = async (req, res) => {
   try {

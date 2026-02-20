@@ -25,7 +25,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Eye,
-  ExternalLink
+  ExternalLink,
+  PhoneCall, // Add call icon
+  Headphones // Alternative call icon
 } from 'lucide-react';
 import {
   Card,
@@ -186,7 +188,24 @@ const AdminPsychicsData = () => {
     }
   };
 
-  // Format duration
+  // Format datetime
+  const formatDateTime = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } catch (error) {
+      return "N/A";
+    }
+  };
+
+  // Format duration (minutes to hours/minutes)
   const formatDuration = (minutes) => {
     if (!minutes || minutes === 0) return "0m";
     const hours = Math.floor(minutes / 60);
@@ -196,6 +215,13 @@ const AdminPsychicsData = () => {
       return `${hours}h ${mins}m`;
     }
     return `${mins}m`;
+  };
+
+  // Format seconds to minutes
+  const formatSecondsToMinutes = (seconds) => {
+    if (!seconds || seconds === 0) return "0m";
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m`;
   };
 
   // Handle page change
@@ -231,6 +257,12 @@ const AdminPsychicsData = () => {
   // View chat session
   const handleViewChat = (sessionId) => {
     navigate(`/admin/dashboard/chat-details/${sessionId}`);
+  };
+
+  // View call session
+  const handleViewCall = (callId) => {
+    // Implement call details view if needed
+    console.log('View call:', callId);
   };
 
   if (loading && !isDetailsView) {
@@ -353,9 +385,16 @@ const AdminPsychicsData = () => {
 
                       <div className="space-y-4">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-muted-foreground">Rate per minute:</span>
+                          <span className="text-sm text-muted-foreground">Chat Rate per minute:</span>
                           <span className="font-medium">
                             {formatCurrency(psychicDetails.profile.ratePerMin)}/min
+                          </span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-muted-foreground">Call Rate per minute:</span>
+                          <span className="font-medium">
+                            $1.00/min (1 credit = $1)
                           </span>
                         </div>
                         
@@ -405,8 +444,12 @@ const AdminPsychicsData = () => {
                             <div>
                               <p className="text-sm font-medium text-muted-foreground">Total Earnings</p>
                               <p className="text-2xl font-bold mt-1">
-                                {formatCurrency(psychicDetails.statistics.totals.earnings)}
+                                {formatCurrency(psychicDetails.statistics.totals.totalEarnings)}
                               </p>
+                              <div className="flex items-center gap-2 mt-1 text-xs">
+                                <span className="text-green-600">Chat: {formatCurrency(psychicDetails.statistics.totals.chatEarnings)}</span>
+                                <span className="text-blue-600">Call: {formatCurrency(psychicDetails.statistics.totals.callEarnings)}</span>
+                              </div>
                             </div>
                             <div className="h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
                               <DollarSign className="h-6 w-6 text-green-600" />
@@ -421,8 +464,12 @@ const AdminPsychicsData = () => {
                             <div>
                               <p className="text-sm font-medium text-muted-foreground">Total Sessions</p>
                               <p className="text-2xl font-bold mt-1">
-                                {psychicDetails.statistics.totals.sessions}
+                                {psychicDetails.statistics.totals.chatSessions + psychicDetails.statistics.totals.callSessions}
                               </p>
+                              <div className="flex items-center gap-2 mt-1 text-xs">
+                                <span className="text-green-600">Chats: {psychicDetails.statistics.totals.chatSessions}</span>
+                                <span className="text-blue-600">Calls: {psychicDetails.statistics.totals.callSessions}</span>
+                              </div>
                             </div>
                             <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center">
                               <MessageSquare className="h-6 w-6 text-blue-600" />
@@ -485,7 +532,7 @@ const AdminPsychicsData = () => {
                             <div>
                               <p className="text-sm font-medium text-muted-foreground">Completion Rate</p>
                               <p className="text-2xl font-bold mt-1">
-                                {psychicDetails.statistics.performance.completionRate}%
+                                {psychicDetails.statistics.performance.chatCompletionRate}%
                               </p>
                             </div>
                             <div className="h-12 w-12 rounded-full bg-teal-100 flex items-center justify-center">
@@ -515,14 +562,12 @@ const AdminPsychicsData = () => {
                       <Card>
                         <CardContent className="p-4">
                           <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-yellow-100 flex items-center justify-center">
-                              <Clock className="h-5 w-5 text-yellow-600" />
+                            <div className="h-10 w-10 rounded-full bg-green-100 flex items-center justify-center">
+                              <PhoneCall className="h-5 w-5 text-green-600" />
                             </div>
                             <div>
-                              <p className="text-sm font-medium">Avg Session Duration</p>
-                              <p className="text-xl font-bold">
-                                {psychicDetails.statistics.current.avgSessionDuration}m
-                              </p>
+                              <p className="text-sm font-medium">Active Calls</p>
+                              <p className="text-xl font-bold">{psychicDetails.statistics.current.activeCalls || 0}</p>
                             </div>
                           </div>
                         </CardContent>
@@ -562,16 +607,18 @@ const AdminPsychicsData = () => {
                       <CardHeader>
                         <CardTitle>Recent Activity</CardTitle>
                         <CardDescription>
-                          Latest chat sessions and paid timers
+                          Latest chat sessions, paid timers, and call sessions
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
                         <Tabs defaultValue="chats" className="w-full">
-                          <TabsList className="grid grid-cols-2 w-full max-w-xs mb-4">
+                          <TabsList className="grid grid-cols-3 w-full max-w-md mb-4">
                             <TabsTrigger value="chats">Chat Sessions</TabsTrigger>
                             <TabsTrigger value="paid-timers">Paid Timers</TabsTrigger>
+                            <TabsTrigger value="calls">Call Sessions</TabsTrigger>
                           </TabsList>
                           
+                          {/* Chat Sessions Tab */}
                           <TabsContent value="chats">
                             <div className="rounded-md border overflow-hidden">
                               <Table>
@@ -647,6 +694,7 @@ const AdminPsychicsData = () => {
                             </div>
                           </TabsContent>
                           
+                          {/* Paid Timers Tab */}
                           <TabsContent value="paid-timers">
                             <div className="rounded-md border overflow-hidden">
                               <Table>
@@ -728,6 +776,110 @@ const AdminPsychicsData = () => {
                               </Table>
                             </div>
                           </TabsContent>
+
+                          {/* Call Sessions Tab - NEW */}
+                          <TabsContent value="calls">
+                            <div className="rounded-md border overflow-hidden">
+                              <Table>
+                                <TableHeader>
+                                  <TableRow className="bg-muted/50">
+                                    <TableHead>User</TableHead>
+                                    <TableHead>Revenue</TableHead>
+                                    <TableHead>Duration</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Start Time</TableHead>
+                                    <TableHead>End Time</TableHead>
+                                    <TableHead>Free Session</TableHead>
+                                    <TableHead>Actions</TableHead>
+                                  </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                  {psychicDetails.recentActivity.callSessions?.length === 0 ? (
+                                    <TableRow>
+                                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                                        <PhoneCall className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                                        <p>No recent call sessions</p>
+                                      </TableCell>
+                                    </TableRow>
+                                  ) : (
+                                    psychicDetails.recentActivity.callSessions?.map((call, index) => (
+                                      <TableRow key={call._id || index}>
+                                        <TableCell>
+                                          <div className="flex items-center gap-2">
+                                            <Avatar className="h-8 w-8">
+                                              <AvatarFallback className="bg-purple-100 text-purple-600">
+                                                {call.user?.[0]?.toUpperCase() || 'U'}
+                                              </AvatarFallback>
+                                            </Avatar>
+                                            <div>
+                                              <p className="font-medium text-sm">{call.user || 'Unknown User'}</p>
+                                            </div>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell>
+                                          <div className="flex items-center gap-1">
+                                            <DollarSign className="h-4 w-4 text-green-600" />
+                                            <span className="font-medium">{formatCurrency(call.revenue || call.amount || 0)}</span>
+                                          </div>
+                                          <p className="text-xs text-muted-foreground">
+                                            {call.creditsUsed || 0} credits
+                                          </p>
+                                        </TableCell>
+                                        <TableCell>
+                                          <div className="flex items-center gap-1">
+                                            <Clock className="h-4 w-4 text-blue-600" />
+                                            <span className="text-sm">{formatDuration(call.duration)}</span>
+                                          </div>
+                                        </TableCell>
+                                        <TableCell>
+                                          <Badge className={
+                                            call.status === 'in-progress' 
+                                              ? "bg-green-500/10 text-green-700 border-green-500/20"
+                                              : call.status === 'ended'
+                                              ? "bg-blue-500/10 text-blue-700 border-blue-500/20"
+                                              : call.status === 'ringing'
+                                              ? "bg-yellow-500/10 text-yellow-700 border-yellow-500/20"
+                                              : "bg-gray-500/10 text-gray-700 border-gray-500/20"
+                                          }>
+                                            {call.status}
+                                          </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-sm">
+                                          {formatDateTime(call.startTime)}
+                                        </TableCell>
+                                        <TableCell className="text-sm">
+                                          {formatDateTime(call.endTime)}
+                                        </TableCell>
+                                        <TableCell>
+                                          {call.isFreeSession ? (
+                                            <Badge variant="outline" className="bg-green-500/10 text-green-700">
+                                              Free
+                                            </Badge>
+                                          ) : (
+                                            <Badge variant="outline" className="bg-blue-500/10 text-blue-700">
+                                              Paid
+                                            </Badge>
+                                          )}
+                                        </TableCell>
+                                        <TableCell>
+                                          {call._id && (
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => handleViewCall(call._id)}
+                                            >
+                                              <Eye className="h-4 w-4 mr-1" />
+                                              View
+                                            </Button>
+                                          )}
+                                        </TableCell>
+                                      </TableRow>
+                                    ))
+                                  )}
+                                </TableBody>
+                              </Table>
+                            </div>
+                          </TabsContent>
                         </Tabs>
                       </CardContent>
                     </Card>
@@ -739,7 +891,7 @@ const AdminPsychicsData = () => {
                       <CardHeader>
                         <CardTitle>Monthly Earnings Breakdown</CardTitle>
                         <CardDescription>
-                          Earnings distribution over the last 6 months
+                          Earnings distribution over the last 6 months (includes both chat and call revenue)
                         </CardDescription>
                       </CardHeader>
                       <CardContent>
@@ -754,8 +906,8 @@ const AdminPsychicsData = () => {
                               <TableHeader>
                                 <TableRow className="bg-muted/50">
                                   <TableHead>Month</TableHead>
-                                  <TableHead>Earnings</TableHead>
-                                  <TableHead>Sessions</TableHead>
+                                  <TableHead>Total Earnings</TableHead>
+                                  <TableHead>Total Sessions</TableHead>
                                   <TableHead>Total Minutes</TableHead>
                                   <TableHead>Avg per Session</TableHead>
                                 </TableRow>
@@ -790,6 +942,10 @@ const AdminPsychicsData = () => {
                               <p className="text-xl font-bold text-blue-800">
                                 {formatCurrency(psychicDetails.financials.totalEarnings)}
                               </p>
+                              <div className="text-xs mt-1">
+                                <span className="block">Chat: {formatCurrency(psychicDetails.financials.chatEarnings)}</span>
+                                <span className="block">Call: {formatCurrency(psychicDetails.financials.callEarnings)}</span>
+                              </div>
                             </div>
                             <div>
                               <p className="text-sm text-blue-600">Average Monthly Earnings</p>
@@ -834,6 +990,7 @@ const AdminPsychicsData = () => {
                                   <TableHead>Total Spent</TableHead>
                                   <TableHead>Avg per Session</TableHead>
                                   <TableHead>Last Session</TableHead>
+                                  <TableHead>Type</TableHead>
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
@@ -866,6 +1023,25 @@ const AdminPsychicsData = () => {
                                     </TableCell>
                                     <TableCell className="text-sm">
                                       {formatDate(user.lastSession)}
+                                    </TableCell>
+                                    <TableCell>
+                                      <Badge variant="outline" className={
+                                        user.type === 'call' 
+                                          ? "bg-blue-500/10 text-blue-700" 
+                                          : "bg-green-500/10 text-green-700"
+                                      }>
+                                        {user.type === 'call' ? (
+                                          <div className="flex items-center gap-1">
+                                            <PhoneCall className="h-3 w-3" />
+                                            <span>Call</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-1">
+                                            <MessageSquare className="h-3 w-3" />
+                                            <span>Chat</span>
+                                          </div>
+                                        )}
+                                      </Badge>
                                     </TableCell>
                                   </TableRow>
                                 ))}
@@ -964,13 +1140,13 @@ const AdminPsychicsData = () => {
             // Psychics List View
             <>
               {/* Header */}
-              <div className="flex f mt-20 lex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div className="flex mt-20 flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">
                     Psychics Management
                   </h1>
                   <p className="text-muted-foreground mt-1">
-                    Overview of all registered psychics and their performance
+                    Overview of all registered psychics and their performance (Chats & Calls)
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1075,6 +1251,10 @@ const AdminPsychicsData = () => {
                           <p className="text-2xl font-bold mt-1">
                             {formatCurrency(psychics.reduce((sum, p) => sum + (p.statistics?.totalEarnings || 0), 0))}
                           </p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Chats: {formatCurrency(psychics.reduce((sum, p) => sum + (p.statistics?.chatEarnings || 0), 0))} | 
+                            Calls: {formatCurrency(psychics.reduce((sum, p) => sum + (p.statistics?.callEarnings || 0), 0))}
+                          </p>
                         </div>
                         <div className="h-12 w-12 rounded-full bg-yellow-100 flex items-center justify-center">
                           <DollarSign className="h-6 w-6 text-yellow-600" />
@@ -1125,8 +1305,9 @@ const AdminPsychicsData = () => {
                             <TableHead>Status</TableHead>
                             <TableHead>Rate/Min</TableHead>
                             <TableHead>Rating</TableHead>
-                            <TableHead>Earnings</TableHead>
-                            <TableHead>Sessions</TableHead>
+                            <TableHead>Earnings (Chat/Call)</TableHead>
+                            <TableHead>Sessions (Chat/Call)</TableHead>
+                            <TableHead>Active</TableHead>
                             <TableHead>Joined</TableHead>
                             <TableHead>Actions</TableHead>
                           </TableRow>
@@ -1172,6 +1353,7 @@ const AdminPsychicsData = () => {
                                     ${(psychic.ratePerMin || 0).toFixed(2)}
                                   </span>
                                 </div>
+                                <p className="text-xs text-muted-foreground">Call: $1.00/min</p>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
@@ -1185,23 +1367,47 @@ const AdminPsychicsData = () => {
                                 </div>
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-1">
-                                  <DollarSign className="h-4 w-4 text-green-600" />
-                                  <span className="font-medium">
-                                    {formatCurrency(psychic.statistics?.totalEarnings || 0)}
-                                  </span>
+                                <div className="flex flex-col">
+                                  <div className="flex items-center gap-1">
+                                    <DollarSign className="h-4 w-4 text-green-600" />
+                                    <span className="font-medium">
+                                      {formatCurrency(psychic.statistics?.totalEarnings || 0)}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    Chat: {formatCurrency(psychic.statistics?.chatEarnings || 0)} | 
+                                    Call: {formatCurrency(psychic.statistics?.callEarnings || 0)}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    ${(psychic.statistics?.earningsPerHour || 0).toFixed(2)}/hour
+                                  </p>
                                 </div>
-                                <p className="text-xs text-muted-foreground">
-                                  ${(psychic.statistics?.earningsPerHour || 0).toFixed(2)}/hour
-                                </p>
                               </TableCell>
                               <TableCell>
-                                <div className="flex items-center gap-2">
+                                <div className="flex flex-col">
                                   <span className="font-medium">{psychic.statistics?.totalSessions || 0}</span>
-                                  {psychic.statistics?.activeSessions > 0 && (
+                                  <p className="text-xs text-muted-foreground">
+                                    Chat: {psychic.statistics?.chatSessions || 0} | 
+                                    Call: {psychic.statistics?.callSessions || 0}
+                                  </p>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex flex-col gap-1">
+                                  {psychic.statistics?.activeChats > 0 && (
                                     <Badge variant="outline" className="text-xs bg-green-500/10 text-green-700">
-                                      {psychic.statistics.activeSessions} active
+                                      <MessageSquare className="h-3 w-3 mr-1" />
+                                      {psychic.statistics.activeChats} chats
                                     </Badge>
+                                  )}
+                                  {psychic.statistics?.activeCalls > 0 && (
+                                    <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-700">
+                                      <PhoneCall className="h-3 w-3 mr-1" />
+                                      {psychic.statistics.activeCalls} calls
+                                    </Badge>
+                                  )}
+                                  {psychic.statistics?.activeChats === 0 && psychic.statistics?.activeCalls === 0 && (
+                                    <span className="text-xs text-muted-foreground">None</span>
                                   )}
                                 </div>
                               </TableCell>
@@ -1210,14 +1416,14 @@ const AdminPsychicsData = () => {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-2">
-                                 <Button
-  variant="default"
-  size="sm"
-  onClick={() => navigate(`/admin/dashboard/psychics/${psychic._id}`)}
->
-  <Eye className="h-4 w-4 mr-1" />
-  View Details
-</Button>
+                                  <Button
+                                    variant="default"
+                                    size="sm"
+                                    onClick={() => navigate(`/admin/dashboard/psychics/${psychic._id}`)}
+                                  >
+                                    <Eye className="h-4 w-4 mr-1" />
+                                    View Details
+                                  </Button>
                                 </div>
                               </TableCell>
                             </TableRow>

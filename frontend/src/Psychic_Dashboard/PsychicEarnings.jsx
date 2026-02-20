@@ -31,10 +31,10 @@ import {
   FaCrown,
   FaChartPie,
   FaFire,
-  FaStar
+  FaStar,
+  FaPhone,
+  FaCommentDots
 } from 'react-icons/fa';
-import DatePicker from 'react-datepicker';
-import "react-datepicker/dist/react-datepicker.css";
 
 // Color scheme
 const colors = {
@@ -47,14 +47,16 @@ const colors = {
   warning: "#F59E0B",      // Yellow
   danger: "#EF4444",       // Red
   background: "#F5F3EB",   // Soft ivory
+  chat: "#3B82F6",         // Blue for chat
+  call: "#8B5CF6"          // Purple for call
 };
 
-// Stat Card Component - Updated
-const StatCard = ({ title, value, icon: Icon, color, change = null, loading = false, onClick = null }) => (
+// Stat Card Component
+const StatCard = ({ title, value, icon: Icon, color, change = null, loading = false, onClick = null, subtitle = null }) => (
   <div 
     className={`bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-all duration-300 cursor-pointer border ${
       loading ? 'animate-pulse' : 'border-gray-100'
-    } hover:scale-[1.02] hover:border-${color.split('-')[1]}-200`}
+    } hover:scale-[1.02]`}
     onClick={onClick}
     style={{ 
       borderColor: colors.primary + '10',
@@ -67,6 +69,9 @@ const StatCard = ({ title, value, icon: Icon, color, change = null, loading = fa
         <h3 className="text-3xl font-bold mt-2" style={{ color: colors.primary }}>
           {loading ? "..." : value}
         </h3>
+        {subtitle && (
+          <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>{subtitle}</p>
+        )}
         {change !== null && !loading && (
           <div className={`flex items-center mt-2 text-sm font-medium ${
             change > 0 ? 'text-green-600' : 
@@ -91,7 +96,7 @@ const StatCard = ({ title, value, icon: Icon, color, change = null, loading = fa
   </div>
 );
 
-// Period Card Component - Updated
+// Period Card Component
 const PeriodCard = ({ period, data, loading = false, active = false, onClick }) => {
   const getPeriodIcon = (period) => {
     switch (period) {
@@ -108,38 +113,11 @@ const PeriodCard = ({ period, data, loading = false, active = false, onClick }) 
       case 'today': return 'Today';
       case 'week': return 'This Week';
       case 'month': return 'This Month';
-      case 'year': return 'This Year';
+      case 'year': return 'All Time';
       default: return period;
     }
   };
   
-  const getPeriodData = () => {
-    if (!data) return {};
-    
-    if (typeof data === 'object') {
-      if (data.earnings !== undefined) {
-        return {
-          revenue: data.earnings,
-          sessions: data.sessions || data.totalSessions || 0,
-          users: data.users || data.totalUsers || 0,
-          timeMinutes: data.timeMinutes || data.totalTimeMinutes || 0
-        };
-      }
-      
-      if (data.revenue !== undefined) {
-        return {
-          revenue: data.revenue,
-          sessions: data.sessions || 0,
-          users: data.users || 0,
-          timeMinutes: data.timeMinutes || 0
-        };
-      }
-    }
-    
-    return {};
-  };
-  
-  const periodData = getPeriodData();
   const PeriodIcon = getPeriodIcon(period);
 
   return (
@@ -155,14 +133,14 @@ const PeriodCard = ({ period, data, loading = false, active = false, onClick }) 
       }}
     >
       <div className="flex items-center space-x-3 mb-4">
-        <div className={`p-2 rounded-lg ${active ? '' : ''}`}
+        <div className={`p-2 rounded-lg`}
           style={{
             backgroundColor: active ? colors.secondary + '20' : colors.primary + '10',
             color: active ? colors.secondary : colors.primary + '70'
           }}>
           <PeriodIcon className="text-lg" />
         </div>
-        <h4 className={`text-lg font-semibold ${active ? '' : ''}`}
+        <h4 className={`text-lg font-semibold`}
           style={{
             color: active ? colors.primary : colors.primary + '90'
           }}>
@@ -171,30 +149,54 @@ const PeriodCard = ({ period, data, loading = false, active = false, onClick }) 
       </div>
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <span className="text-gray-600">Revenue</span>
-          <span className="font-bold"
-            style={{ color: active ? colors.secondary : colors.success }}>
-            {loading ? "..." : formatCurrency(periodData.revenue || 0)}
+          <span className="text-gray-600">Total Revenue</span>
+          <span className="font-bold text-lg"
+            style={{ color: colors.success }}>
+            {loading ? "..." : formatCurrency(data?.earnings || 0)}
           </span>
         </div>
-        <div className="flex justify-between items-center">
+        
+        {/* Chat Earnings */}
+        <div className="flex justify-between items-center pl-2 border-l-2" style={{ borderColor: colors.chat }}>
+          <span className="text-sm text-gray-500">Chat Earnings</span>
+          <span className="font-medium" style={{ color: colors.chat }}>
+            {loading ? "..." : formatCurrency(data?.chatEarnings || 0)}
+          </span>
+        </div>
+        
+        {/* Call Earnings */}
+        <div className="flex justify-between items-center pl-2 border-l-2" style={{ borderColor: colors.call }}>
+          <span className="text-sm text-gray-500">Call Earnings</span>
+          <span className="font-medium" style={{ color: colors.call }}>
+            {loading ? "..." : formatCurrency(data?.callEarnings || 0)}
+          </span>
+        </div>
+        
+        <div className="flex justify-between items-center pt-2 border-t"
+          style={{ borderColor: colors.primary + '20' }}>
           <span className="text-gray-600">Sessions</span>
-          <span className="font-semibold" style={{ color: colors.primary }}>
-            {loading ? "..." : periodData.sessions || 0}
-          </span>
+          <div className="text-right">
+            <span className="font-semibold block" style={{ color: colors.primary }}>
+              {loading ? "..." : (data?.sessions || 0)}
+            </span>
+            <span className="text-xs" style={{ color: colors.primary + '60' }}>
+              {data?.chatSessions || 0} chat • {data?.callSessions || 0} call
+            </span>
+          </div>
         </div>
+        
         <div className="flex justify-between items-center">
           <span className="text-gray-600">Users</span>
           <span className="font-semibold" style={{ color: colors.accent }}>
-            {loading ? "..." : periodData.users || 0}
+            {loading ? "..." : (data?.users || data?.totalUsers || 0)}
           </span>
         </div>
-        {(periodData.timeMinutes || 0) > 0 && (
-          <div className="flex justify-between items-center pt-2 border-t"
-            style={{ borderColor: colors.primary + '20' }}>
-            <span className="text-gray-600">Chat Time</span>
+        
+        {(data?.timeMinutes || 0) > 0 && (
+          <div className="flex justify-between items-center">
+            <span className="text-gray-600">Total Time</span>
             <span className="font-semibold" style={{ color: colors.warning }}>
-              {loading ? "..." : `${periodData.timeMinutes || 0} min`}
+              {loading ? "..." : `${data.timeMinutes || 0} min`}
             </span>
           </div>
         )}
@@ -203,7 +205,7 @@ const PeriodCard = ({ period, data, loading = false, active = false, onClick }) 
   );
 };
 
-// User Earnings Card Component - Updated
+// User Earnings Card Component
 const UserEarningsCard = ({ user, rank, onViewDetails }) => (
   <div className="bg-white rounded-xl shadow-md p-5 hover:shadow-xl transition-all duration-300 hover:scale-[1.02] border border-gray-100 group">
     <div className="flex items-center justify-between mb-4">
@@ -223,7 +225,7 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-lg truncate" style={{ color: colors.primary }}>
-            {user.user?.firstName ? `${user.user.firstName} ${user.user.lastName || ''}`.trim() : 
+            {user.user?.username ? `${user.user.username} ${user.user.lastName || ''}`.trim() : 
              user.userName || "Anonymous User"}
           </p>
           <p className="text-sm truncate" style={{ color: colors.primary + '70' }}>
@@ -237,6 +239,28 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
         </p>
         <p className="text-sm mt-1" style={{ color: colors.primary + '60' }}>
           {user.totalSessions || 0} sessions
+        </p>
+      </div>
+    </div>
+    
+    {/* Chat/Call Breakdown */}
+    <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="text-center p-2 rounded-lg" style={{ backgroundColor: colors.chat + '10' }}>
+        <p className="text-xs mb-1" style={{ color: colors.chat }}>Chat</p>
+        <p className="font-bold text-sm" style={{ color: colors.chat }}>
+          {formatCurrency(user.chatEarnings || 0)}
+        </p>
+        <p className="text-xs" style={{ color: colors.primary + '60' }}>
+          {user.chatSessions || 0} sessions
+        </p>
+      </div>
+      <div className="text-center p-2 rounded-lg" style={{ backgroundColor: colors.call + '10' }}>
+        <p className="text-xs mb-1" style={{ color: colors.call }}>Call</p>
+        <p className="font-bold text-sm" style={{ color: colors.call }}>
+          {formatCurrency(user.callEarnings || 0)}
+        </p>
+        <p className="text-xs" style={{ color: colors.primary + '60' }}>
+          {user.callSessions || 0} sessions
         </p>
       </div>
     </div>
@@ -257,7 +281,7 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
       <div className="text-center p-2 rounded-lg" style={{ backgroundColor: colors.secondary + '10' }}>
         <p className="font-semibold mb-1" style={{ color: colors.secondary }}>Frequency</p>
         <p className="font-bold" style={{ color: colors.secondary }}>
-          {user.sessionFrequency?.toFixed(1) || 0}/wk
+          {((user.totalSessions || 0) / 4).toFixed(1)}/wk
         </p>
       </div>
     </div>
@@ -275,158 +299,16 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
   </div>
 );
 
-// Filter Component - Updated
+// Filter Component
 const FilterComponent = ({ filters, onFilterChange, onReset }) => {
   const [showFilters, setShowFilters] = useState(false);
 
   return (
-    <div className="mb-8 p-6 rounded-xl border" 
-      style={{ 
-        backgroundColor: colors.primary + '05',
-        borderColor: colors.primary + '20'
-      }}>
-      <div className="flex justify-between items-center mb-4">
-        <h3 className="text-lg font-bold flex items-center"
-          style={{ color: colors.primary }}>
-          <FaFilter className="mr-2" style={{ color: colors.secondary }} />
-          Filters & Search
-        </h3>
-        <div className="flex gap-2">
-          <button
-            onClick={() => setShowFilters(!showFilters)}
-            className="px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              backgroundColor: colors.secondary + '10',
-              color: colors.secondary,
-              borderColor: colors.secondary
-            }}
-          >
-            {showFilters ? <FaEyeSlash className="mr-2" /> : <FaEye className="mr-2" />}
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </button>
-          <button
-            onClick={onReset}
-            className="px-4 py-2 rounded-lg font-medium transition-colors"
-            style={{
-              backgroundColor: colors.danger + '10',
-              color: colors.danger,
-              borderColor: colors.danger
-            }}
-          >
-            <FaTimes className="mr-2" />
-            Reset
-          </button>
-        </div>
-      </div>
+    <div 
+     >
+     
 
-      {/* Search Bar */}
-      <div className="mb-4">
-        <div className="relative">
-          <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search users by name or email..."
-            value={filters.searchQuery}
-            onChange={(e) => onFilterChange('searchQuery', e.target.value)}
-            className="w-full pl-10 pr-4 py-3 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2"
-            style={{
-              backgroundColor: 'white',
-              borderColor: colors.primary + '30',
-              color: colors.primary,
-              focusRingColor: colors.secondary
-            }}
-          />
-        </div>
-      </div>
-
-      {showFilters && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t"
-          style={{ borderColor: colors.primary + '20' }}>
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: colors.primary + '80' }}>
-              Date Range
-            </label>
-            <div className="space-y-2">
-              <DatePicker
-                selected={filters.startDate}
-                onChange={(date) => onFilterChange('startDate', date)}
-                placeholderText="Start Date"
-                className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2"
-                style={{
-                  backgroundColor: 'white',
-                  borderColor: colors.primary + '30',
-                  color: colors.primary,
-                  focusRingColor: colors.secondary
-                }}
-              />
-              <DatePicker
-                selected={filters.endDate}
-                onChange={(date) => onFilterChange('endDate', date)}
-                placeholderText="End Date"
-                className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2"
-                style={{
-                  backgroundColor: 'white',
-                  borderColor: colors.primary + '30',
-                  color: colors.primary,
-                  focusRingColor: colors.secondary
-                }}
-              />
-            </div>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: colors.primary + '80' }}>
-              Min Earnings
-            </label>
-            <input
-              type="number"
-              placeholder="$ Minimum"
-              value={filters.minAmount}
-              onChange={(e) => onFilterChange('minAmount', e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2"
-              style={{
-                backgroundColor: 'white',
-                borderColor: colors.primary + '30',
-                color: colors.primary,
-                focusRingColor: colors.secondary
-              }}
-            />
-          </div>
-          
-          <div>
-            <label className="block text-sm font-medium mb-2" style={{ color: colors.primary + '80' }}>
-              Min Sessions
-            </label>
-            <input
-              type="number"
-              placeholder="Minimum sessions"
-              value={filters.minSessions}
-              onChange={(e) => onFilterChange('minSessions', e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border focus:outline-none focus:ring-2 focus:ring-offset-2"
-              style={{
-                backgroundColor: 'white',
-                borderColor: colors.primary + '30',
-                color: colors.primary,
-                focusRingColor: colors.secondary
-              }}
-            />
-          </div>
-          
-          <div className="flex items-end">
-            <button
-              onClick={onReset}
-              className="w-full px-4 py-3 rounded-lg font-medium transition-colors hover:shadow-md"
-              style={{
-                backgroundColor: colors.secondary,
-                color: colors.primary
-              }}
-            >
-              <FaSearch className="mr-2 inline" />
-              Apply Filters
-            </button>
-          </div>
-        </div>
-      )}
+     
     </div>
   );
 };
@@ -444,11 +326,21 @@ const formatCurrency = (amount) => {
 
 // Format date helper
 const formatDate = (date) => {
+  if (!date) return 'N/A';
   return new Date(date).toLocaleDateString('en-US', {
     year: 'numeric',
     month: 'short',
     day: 'numeric'
   });
+};
+
+// Format time helper
+const formatTime = (minutes) => {
+  if (!minutes) return '0 min';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${hours}h ${mins}m`;
 };
 
 const PsychicEarnings = () => {
@@ -472,6 +364,7 @@ const PsychicEarnings = () => {
   const [sortConfig, setSortConfig] = useState({ key: 'totalEarnings', direction: 'desc' });
   const [showUserModal, setShowUserModal] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [debugInfo, setDebugInfo] = useState(null);
 
   // Create API instance
   const api = useRef(
@@ -521,9 +414,17 @@ const PsychicEarnings = () => {
       setError(null);
       const response = await api.current.get('/api/chatrequest/psychic/earnings');
       
-      const processedData = processEarningsData(response.data);
-      setEarningsData(processedData);
-      return { success: true, data: processedData };
+      console.log('API Response:', response.data);
+      setDebugInfo(response.data);
+      
+      // Check if call data exists
+      if (response.data?.data?.summary) {
+        console.log('Call Sessions:', response.data.data.summary.allTime?.callSessions);
+        console.log('Call Earnings:', response.data.data.summary.allTime?.callEarnings);
+      }
+      
+      setEarningsData(response.data);
+      return { success: true, data: response.data };
     } catch (err) {
       console.error('Error fetching earnings:', err);
       let errorMessage = 'Failed to fetch earnings data';
@@ -546,43 +447,12 @@ const PsychicEarnings = () => {
     }
   };
 
-  // Process earnings data
-  const processEarningsData = (data) => {
-    if (!data) return null;
-    
-    const processed = { ...data };
-    
-    if (processed.data) {
-      processed.data = {
-        ...processed.data,
-        summary: processed.data.summary || {
-          daily: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-          weekly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-          monthly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-          allTime: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0, totalUsers: 0 }
-        }
-      };
-    } else {
-      processed.data = {
-        summary: {
-          daily: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-          weekly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-          monthly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-          allTime: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0, totalUsers: 0 }
-        },
-        userBreakdown: [],
-        recentSessions: []
-      };
-    }
-    
-    return processed;
-  };
-
   // Fetch user-specific earnings
   const fetchUserEarnings = async (userId) => {
     try {
       setLoading(true);
       const response = await api.current.get(`/api/chatrequest/psychic/earnings/user/${userId}`);
+      console.log('User Earnings Response:', response.data);
       setUserEarnings(response.data);
       setSelectedUser(response.data.user);
       setShowUserModal(true);
@@ -600,10 +470,7 @@ const PsychicEarnings = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      const result = await fetchEarningsData();
-      if (result.success && result.data) {
-        console.log('API Response Structure:', result.data);
-      }
+      await fetchEarningsData();
       setLoading(false);
     };
 
@@ -651,16 +518,16 @@ const PsychicEarnings = () => {
   const handleExport = async () => {
     setExporting(true);
     try {
-      console.log('Exporting data...');
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const data = earningsData?.data;
       
       const csvData = [
-        ['Date', 'User', 'Amount', 'Duration', 'Sessions'],
-        ...(earningsData?.data?.recentSessions || []).map(session => [
-          new Date(session.endedAt).toLocaleDateString(),
+        ['Date', 'User', 'Type', 'Amount', 'Duration', 'Sessions'],
+        ...(data?.recentSessions || []).map(session => [
+          new Date(session.endedAt || session.endTime).toLocaleDateString(),
           session.user?.firstName || 'Unknown',
-          session.amount,
-          `${session.durationMinutes} min`,
+          session.type || 'session',
+          session.amount || 0,
+          `${session.durationMinutes || 0} min`,
           1
         ])
       ];
@@ -751,31 +618,13 @@ const PsychicEarnings = () => {
     return users;
   };
 
-  // Summary data - with fallback values
+  // Get summary data with fallbacks
   const summary = earningsData?.data?.summary || {
     daily: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
     weekly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
     monthly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-    allTime: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0, totalUsers: 0 }
+    allTime: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0, totalUsers: 0, chatEarnings: 0, callEarnings: 0, chatSessions: 0, callSessions: 0 }
   };
-
-  // Ensure allTime has earnings property
-  if (summary.allTime && summary.allTime.earnings === undefined) {
-    summary.allTime.earnings = summary.allTime.revenue || 0;
-  }
-
-  // For backward compatibility
-  if (summary.daily && summary.daily.earnings === undefined) {
-    summary.daily.earnings = summary.daily.revenue || 0;
-  }
-
-  if (summary.weekly && summary.weekly.earnings === undefined) {
-    summary.weekly.earnings = summary.weekly.revenue || 0;
-  }
-
-  if (summary.monthly && summary.monthly.earnings === undefined) {
-    summary.monthly.earnings = summary.monthly.revenue || 0;
-  }
 
   // Active period data
   const activePeriodData = getActivePeriodData();
@@ -785,10 +634,12 @@ const PsychicEarnings = () => {
     <div className="min-h-screen p-4 md:p-6" style={{ backgroundColor: colors.background }}>
       {/* Header */}
       <div className="mb-8">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
           <div>
             <h1 className="text-3xl font-bold mb-2" style={{ color: colors.primary }}>Earnings Dashboard</h1>
-            <p className="text-lg" style={{ color: colors.primary + '80' }}>Track your earnings, analyze trends, and understand your performance</p>
+            <p className="text-lg" style={{ color: colors.primary + '80' }}>
+              Track your earnings from both chat and call sessions
+            </p>
           </div>
           <div className="flex gap-3">
             <button
@@ -831,6 +682,8 @@ const PsychicEarnings = () => {
             </button>
           </div>
         )}
+
+       
       </div>
 
       {loading && !earningsData ? (
@@ -840,46 +693,97 @@ const PsychicEarnings = () => {
         </div>
       ) : (
         <>
+          {/* Session Type Summary */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div className="bg-white rounded-xl shadow-md p-6 border" style={{ borderColor: colors.chat + '30' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 rounded-full" style={{ backgroundColor: colors.chat + '20' }}>
+                  <FaCommentDots className="text-xl" style={{ color: colors.chat }} />
+                </div>
+                <h3 className="text-lg font-bold" style={{ color: colors.primary }}>Chat Sessions</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Earnings</p>
+                  <p className="text-2xl font-bold" style={{ color: colors.chat }}>
+                    {formatCurrency(summary.allTime?.chatEarnings || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Sessions</p>
+                  <p className="text-2xl font-bold" style={{ color: colors.primary }}>
+                    {summary.allTime?.chatSessions || 0}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-md p-6 border" style={{ borderColor: colors.call + '30' }}>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="p-3 rounded-full" style={{ backgroundColor: colors.call + '20' }}>
+                  <FaPhone className="text-xl" style={{ color: colors.call }} />
+                </div>
+                <h3 className="text-lg font-bold" style={{ color: colors.primary }}>Call Sessions</h3>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Earnings</p>
+                  <p className="text-2xl font-bold" style={{ color: colors.call }}>
+                    {formatCurrency(summary.allTime?.callEarnings || 0)}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Sessions</p>
+                  <p className="text-2xl font-bold" style={{ color: colors.primary }}>
+                    {summary.allTime?.callSessions || 0}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
               title="Total Earnings"
-              value={formatCurrency(summary.allTime.earnings)}
+              value={formatCurrency(summary.allTime?.earnings || 0)}
               icon={FaDollarSign}
               color={colors.success}
-              change={calculateGrowth(summary.monthly.earnings, summary.weekly.earnings)}
+              change={calculateGrowth(summary.monthly?.earnings, summary.weekly?.earnings)}
               loading={loading}
+              subtitle={`Chat: ${formatCurrency(summary.allTime?.chatEarnings || 0)} • Call: ${formatCurrency(summary.allTime?.callEarnings || 0)}`}
               onClick={() => handlePeriodChange('year')}
             />
             <StatCard
               title="Active Users"
-              value={summary.allTime.totalUsers}
+              value={summary.allTime?.totalUsers || 0}
               icon={FaUsers}
               color={colors.accent}
-              change={calculateGrowth(summary.monthly.users, summary.weekly.users)}
+              change={calculateGrowth(summary.monthly?.users, summary.weekly?.users)}
               loading={loading}
             />
             <StatCard
               title="Total Sessions"
-              value={summary.allTime.sessions}
+              value={summary.allTime?.sessions || 0}
               icon={FaChartLine}
               color={colors.secondary}
-              change={calculateGrowth(summary.monthly.sessions, summary.weekly.sessions)}
+              change={calculateGrowth(summary.monthly?.sessions, summary.weekly?.sessions)}
               loading={loading}
+              subtitle={`Chat: ${summary.allTime?.chatSessions || 0} • Call: ${summary.allTime?.callSessions || 0}`}
             />
             <StatCard
-              title="Chat Time"
-              value={`${summary.allTime.timeMinutes} min`}
+              title="Total Time"
+              value={formatTime(summary.allTime?.timeMinutes || 0)}
               icon={FaClock}
               color={colors.warning}
-              change={calculateGrowth(summary.monthly.timeMinutes, summary.weekly.timeMinutes)}
+              change={calculateGrowth(summary.monthly?.timeMinutes, summary.weekly?.timeMinutes)}
               loading={loading}
             />
           </div>
 
           {/* Period Selection */}
-          <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4" style={{ color: colors.primary }}>Select Period</h2>
+          {/* <div className="mb-8">
+            <h2 className="text-xl font-bold mb-4" style={{ color: colors.primary }}>Earnings Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {['today', 'week', 'month', 'year'].map((period) => (
                 <PeriodCard
@@ -894,7 +798,7 @@ const PsychicEarnings = () => {
                 />
               ))}
             </div>
-          </div>
+          </div> */}
 
           {/* Filters */}
           <FilterComponent 
@@ -913,7 +817,7 @@ const PsychicEarnings = () => {
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-bold" style={{ color: colors.primary }}>
                   <FaUserTie className="inline mr-2" style={{ color: colors.secondary }} />
-                  User Earnings
+                  User Earnings Breakdown
                 </h2>
                 <div className="text-sm" style={{ color: colors.primary + '70' }}>
                   Showing {filteredUsers.length} of {earningsData?.data?.userBreakdown?.length || 0} users
@@ -925,7 +829,7 @@ const PsychicEarnings = () => {
               <table className="min-w-full divide-y" style={{ borderColor: colors.primary + '20' }}>
                 <thead style={{ backgroundColor: colors.primary + '05' }}>
                   <tr>
-                    {['rank', 'userName', 'totalEarnings', 'totalSessions', 'totalTimeMinutes', 'avgEarningsPerSession', 'actions'].map((key) => (
+                    {['rank', 'userName', 'totalEarnings', 'chatEarnings', 'callEarnings', 'totalSessions', 'totalTimeMinutes', 'avgEarningsPerSession', 'actions'].map((key) => (
                       <th key={key} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider"
                         style={{ color: colors.primary + '70' }}>
                         <button 
@@ -935,9 +839,11 @@ const PsychicEarnings = () => {
                           <span>{
                             key === 'rank' ? 'Rank' :
                             key === 'userName' ? 'User' :
-                            key === 'totalEarnings' ? 'Total Spent' :
+                            key === 'totalEarnings' ? 'Total' :
+                            key === 'chatEarnings' ? 'Chat' :
+                            key === 'callEarnings' ? 'Call' :
                             key === 'totalSessions' ? 'Sessions' :
-                            key === 'totalTimeMinutes' ? 'Chat Time' :
+                            key === 'totalTimeMinutes' ? 'Time' :
                             key === 'avgEarningsPerSession' ? 'Avg/Session' :
                             'Actions'
                           }</span>
@@ -968,12 +874,12 @@ const PsychicEarnings = () => {
                             <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center"
                               style={{ background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)` }}>
                               <span className="font-bold text-white">
-                                {user.user?.firstName?.[0]?.toUpperCase() || 'U'}
+                                {user.user?.username?.[0]?.toUpperCase() || 'U'}
                               </span>
                             </div>
                             <div className="ml-4">
                               <div className="font-bold" style={{ color: colors.primary }}>
-                                {user.user?.firstName ? `${user.user.firstName} ${user.user.lastName || ''}`.trim() : 'Anonymous User'}
+                                {user.user?.username ? ``.trim() : 'Anonymous User'}
                               </div>
                               <div className="text-sm" style={{ color: colors.primary + '70' }}>
                                 {user.user?.email || 'No email'}
@@ -984,6 +890,22 @@ const PsychicEarnings = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-lg font-bold" style={{ color: colors.success }}>
                             {formatCurrency(user.totalEarnings)}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-medium" style={{ color: colors.chat }}>
+                            {formatCurrency(user.chatEarnings || 0)}
+                          </div>
+                          <div className="text-xs" style={{ color: colors.primary + '60' }}>
+                            {user.chatSessions || 0} sessions
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-medium" style={{ color: colors.call }}>
+                            {formatCurrency(user.callEarnings || 0)}
+                          </div>
+                          <div className="text-xs" style={{ color: colors.primary + '60' }}>
+                            {user.callSessions || 0} sessions
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -1011,21 +933,13 @@ const PsychicEarnings = () => {
                             >
                               Details
                             </button>
-                            <button className="px-3 py-1 rounded-lg text-sm font-bold transition-colors"
-                              style={{
-                                backgroundColor: colors.primary + '10',
-                                color: colors.primary
-                              }}
-                            >
-                              Contact
-                            </button>
                           </div>
                         </td>
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="7" className="px-6 py-8 text-center">
+                      <td colSpan="9" className="px-6 py-8 text-center">
                         <FaUserTie className="text-4xl mx-auto mb-3" style={{ color: colors.primary + '30' }} />
                         <p style={{ color: colors.primary + '70' }}>No users found</p>
                         <p className="text-sm mt-1" style={{ color: colors.primary + '50' }}>Try adjusting your filters</p>
@@ -1067,54 +981,52 @@ const PsychicEarnings = () => {
                   <FaHistory className="inline mr-2" style={{ color: colors.secondary }} />
                   Recent Sessions
                 </h2>
-                <button className="font-bold hover:opacity-80 transition-colors"
-                  style={{ color: colors.secondary }}>
-                  View All →
-                </button>
               </div>
               <div className="space-y-4">
-                {earningsData.data.recentSessions.slice(0, 5).map((session, index) => (
-                  <div key={session._id || index} className="pl-4 py-3 rounded-r-lg hover:bg-gray-50 transition-colors"
-                    style={{ 
-                      borderLeft: `4px solid ${colors.accent}`,
-                      backgroundColor: index % 2 === 0 ? colors.primary + '03' : 'transparent'
-                    }}>
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="font-bold" style={{ color: colors.primary }}>
-                          {session.user?.firstName || 'User'} {session.user?.lastName || ''}
-                        </p>
-                        <p className="text-sm" style={{ color: colors.primary + '70' }}>
-                          {session.user?.email || 'No email'}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-bold text-lg" style={{ color: colors.success }}>
-                          {formatCurrency(session.amount || 0)}
-                        </p>
-                        <div className="flex items-center space-x-4 text-sm" style={{ color: colors.primary + '60' }}>
-                          <span>{session.durationMinutes || 0} min</span>
-                          <span>{formatDate(session.endedAt)}</span>
+                {earningsData.data.recentSessions.slice(0, 5).map((session, index) => {
+                  const sessionColor = session.type === 'chat' ? colors.chat : colors.call;
+                  const SessionIcon = session.type === 'chat' ? FaCommentDots : FaPhone;
+                  
+                  return (
+                    <div key={session._id || index} 
+                      className="pl-4 py-3 rounded-r-lg hover:bg-gray-50 transition-colors"
+                      style={{ 
+                        borderLeft: `4px solid ${sessionColor}`,
+                        backgroundColor: index % 2 === 0 ? colors.primary + '03' : 'transparent'
+                      }}>
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-full" style={{ backgroundColor: sessionColor + '20' }}>
+                            <SessionIcon className="text-sm" style={{ color: sessionColor }} />
+                          </div>
+                          <div>
+                            <p className="font-bold" style={{ color: colors.primary }}>
+                              {session.user?.username || 'User'} {session.user?.lastName || ''}
+                            </p>
+                            <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                              {session.type === 'chat' ? 'Chat Session' : 'Call Session'}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-lg" style={{ color: colors.success }}>
+                            {formatCurrency(session.amount || 0)}
+                          </p>
+                          <div className="flex items-center space-x-4 text-sm" style={{ color: colors.primary + '60' }}>
+                            <span>{session.durationMinutes || 0} min</span>
+                            <span>{formatDate(session.endedAt || session.endTime)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
           {/* Summary Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="rounded-xl p-6 text-white shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Performance Score</h3>
-                <FaChartPie className="text-2xl" />
-              </div>
-              <p className="text-3xl font-bold">Excellent</p>
-              <p className="opacity-90 mt-2">Based on your earning trends</p>
-            </div>
-            
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="rounded-xl p-6 text-white shadow-lg"
               style={{ background: `linear-gradient(135deg, ${colors.success} 0%, #047857 100%)` }}>
               <div className="flex items-center justify-between mb-4">
@@ -1122,7 +1034,7 @@ const PsychicEarnings = () => {
                 <FaMoneyBillWave className="text-2xl" />
               </div>
               <p className="text-3xl font-bold">
-                {summary.allTime.sessions > 0 
+                {summary.allTime?.sessions > 0 
                   ? formatCurrency(summary.allTime.earnings / summary.allTime.sessions)
                   : '$0.00'
                 }
@@ -1143,6 +1055,23 @@ const PsychicEarnings = () => {
                 }
               </p>
               <p className="opacity-90 mt-2">Users with multiple sessions</p>
+            </div>
+
+            <div className="rounded-xl p-6 text-white shadow-lg"
+              style={{ background: `linear-gradient(135deg, ${colors.secondary} 0%, #B45309 100%)` }}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold">Session Mix</h3>
+                <FaChartPie className="text-2xl" />
+              </div>
+              <p className="text-3xl font-bold">
+                {summary.allTime?.sessions > 0 
+                  ? `${Math.round(((summary.allTime?.chatSessions || 0) / summary.allTime.sessions) * 100)}% Chat`
+                  : '0% Chat'
+                }
+              </p>
+              <p className="opacity-90 mt-2">
+                {summary.allTime?.callSessions || 0} calls • {summary.allTime?.chatSessions || 0} chats
+              </p>
             </div>
           </div>
         </>
@@ -1189,15 +1118,12 @@ const PsychicEarnings = () => {
                           {selectedUser.firstName} {selectedUser.lastName || ''}
                         </h3>
                         <p style={{ color: colors.primary + '70' }}>{selectedUser.email}</p>
-                        <p className="text-sm mt-1" style={{ color: colors.primary + '60' }}>
-                          Member since: {formatDate(selectedUser.joinedDate || selectedUser.createdAt)}
-                        </p>
                       </div>
                     </div>
                   </div>
 
                   {/* Earnings Summary */}
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {['daily', 'weekly', 'monthly', 'allTime'].map((period) => {
                       const periodData = userEarnings.earnings?.[period];
                       if (!periodData) return null;
@@ -1213,18 +1139,60 @@ const PsychicEarnings = () => {
                           <div className="text-2xl font-bold" style={{ color: colors.success }}>
                             {formatCurrency(periodData.amount || 0)}
                           </div>
+                          <div className="flex justify-between text-sm mt-2">
+                            <span style={{ color: colors.chat }}>Chat: {formatCurrency(periodData.chatAmount || 0)}</span>
+                            <span style={{ color: colors.call }}>Call: {formatCurrency(periodData.callAmount || 0)}</span>
+                          </div>
                           <div className="text-sm mt-1" style={{ color: colors.primary + '70' }}>
                             {periodData.sessions || 0} sessions
                           </div>
-                          {periodData.timeMinutes > 0 && (
-                            <div className="text-xs mt-1" style={{ color: colors.primary + '60' }}>
-                              {periodData.timeMinutes} min
-                            </div>
-                          )}
                         </div>
                       );
                     })}
                   </div>
+
+                  {/* Session History */}
+                  {userEarnings.sessionHistory?.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-bold mb-3" style={{ color: colors.primary }}>
+                        Session History
+                      </h3>
+                      <div className="space-y-3">
+                        {userEarnings.sessionHistory.slice(0, 5).map((session, idx) => {
+                          const sessionColor = session.type === 'chat' ? colors.chat : colors.call;
+                          const SessionIcon = session.type === 'chat' ? FaCommentDots : FaPhone;
+                          
+                          return (
+                            <div key={idx} 
+                              className="flex justify-between items-center p-3 rounded-lg border"
+                              style={{ borderColor: colors.primary + '10' }}>
+                              <div className="flex items-center gap-3">
+                                <div className="p-2 rounded-full" style={{ backgroundColor: sessionColor + '20' }}>
+                                  <SessionIcon className="text-xs" style={{ color: sessionColor }} />
+                                </div>
+                                <div>
+                                  <p className="font-medium" style={{ color: colors.primary }}>
+                                    {session.type === 'chat' ? 'Chat Session' : 'Call Session'}
+                                  </p>
+                                  <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                                    {formatDate(session.endTime)}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold" style={{ color: colors.success }}>
+                                  {formatCurrency(session.amount || 0)}
+                                </p>
+                                <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                                  {session.durationMinutes || 0} min
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   <div className="pt-4 border-t" style={{ borderColor: colors.primary + '20' }}>
                     <div className="flex justify-end space-x-3">
@@ -1238,11 +1206,6 @@ const PsychicEarnings = () => {
                         }}
                       >
                         Close
-                      </button>
-                      <button className="px-4 py-2 rounded-lg font-medium text-white transition-colors"
-                        style={{ backgroundColor: colors.secondary }}
-                      >
-                        Export User Report
                       </button>
                     </div>
                   </div>

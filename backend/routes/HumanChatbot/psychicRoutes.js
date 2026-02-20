@@ -18,6 +18,7 @@ const {
   getMyStatus,
   getPsychicStatus,
   adminCreatePsychic,
+  getPsychicCategories,
   getPsychicStatuses,
   adminToggleVerifyPsychic,
   getPsychicStatusesFast,
@@ -32,6 +33,7 @@ const router = express.Router();
 router.post('/register', registerPsychic);
 router.post('/login', loginPsychic);
 router.get('/', getAllPsychics); // Public: Get all verified psychics
+router.get('/categories', getPsychicCategories);
 
 // ========== PSYCHIC PROTECTED ROUTES ==========
 router.get('/analytics', protectPsychic, getPsychicChatAnalytics);

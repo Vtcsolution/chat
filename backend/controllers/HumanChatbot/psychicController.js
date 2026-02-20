@@ -107,63 +107,112 @@ async function calculateUserRetentionRate(psychicId) {
 }
 
 // @desc    Register a new psychic
+// controllers/HumanChat/psychicController.js (or wherever your controller is)
+
+// @desc    Register a new psychic
+// controllers/HumanChat/psychicController.js
+
+// @desc    Register a new psychic
 const registerPsychic = asyncHandler(async (req, res) => {
-  const { name, email, password, ratePerMin, bio, gender, image } = req.body; // Add image
+  const { name, email, password, ratePerMin, bio, gender, image, category } = req.body;
 
-  // Validate required fields
-  if (!name || !email || !password || !ratePerMin || !bio || !gender) {
-    return res.status(400).json({
-      success: false,
-      message: 'Please provide all required fields'
-    });
-  }
-
-  // Check if email already exists
-  const psychicExists = await Psychic.findOne({ email });
-  if (psychicExists) {
-    return res.status(400).json({
-      success: false,
-      message: 'Psychic with this email already exists'
-    });
-  }
-
-  // Create psychic with image
-  const psychic = await Psychic.create({
+  console.log("📝 Registration attempt with data:", {
     name,
-    email: email.toLowerCase(),
-    password,
-    ratePerMin: parseFloat(ratePerMin),
-    bio,
+    email,
+    ratePerMin,
     gender,
-    image: image || '' // Add this
+    category,
+    hasImage: !!image
   });
 
-  if (psychic) {
-    // Generate token
-    const token = generateToken(psychic._id);
+  // Validate required fields including category
+  if (!name || !email || !password || !ratePerMin || !bio || !gender || !category) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please provide all required fields including category'
+    });
+  }
+
+  try {
+    // Check if email already exists
+    const psychicExists = await Psychic.findOne({ email });
+    if (psychicExists) {
+      return res.status(400).json({
+        success: false,
+        message: 'Psychic with this email already exists'
+      });
+    }
+
+    // Validate category is in the allowed list
+    const validCategories = [
+      'Tarot Reading', 'Astrology', 'Reading', 'Love & Relationships',
+      'Career & Finance', 'Spiritual Guidance', 'Numerology', 
+      'Clairvoyant', 'Dream Analysis'
+    ];
     
-    // Set cookie
-    res.cookie('psychicToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
-      path: '/'
+    if (!validCategories.includes(category)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid category selected'
+      });
+    }
+
+    // Create psychic with category
+    console.log("Creating psychic with category:", category);
+    
+    const psychic = await Psychic.create({
+      name,
+      email: email.toLowerCase(),
+      password,
+      ratePerMin: parseFloat(ratePerMin),
+      bio,
+      gender,
+      image: image || '',
+      category // Make sure this is included
     });
 
-    res.status(201).json({
-      success: true,
-      _id: psychic._id,
+    console.log("✅ Psychic created successfully:", {
+      id: psychic._id,
       name: psychic.name,
-      email: psychic.email,
-      image: psychic.image, // Add this
-      isVerified: psychic.isVerified,
-      token: token,
+      category: psychic.category // This should now be visible
     });
-  } else {
-    res.status(400).json({
+
+    if (psychic) {
+      // Generate token
+      const token = generateToken(psychic._id);
+      
+      // Set cookie
+      res.cookie('psychicToken', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+        path: '/'
+      });
+
+      res.status(201).json({
+        success: true,
+        _id: psychic._id,
+        name: psychic.name,
+        email: psychic.email,
+        image: psychic.image,
+        category: psychic.category, // Include in response
+        isVerified: psychic.isVerified,
+        token: token,
+      });
+    }
+  } catch (error) {
+    console.error("❌ Error creating psychic:", error);
+    console.error("Error details:", {
+      name: error.name,
+      message: error.message,
+      code: error.code,
+      errors: error.errors
+    });
+    
+    return res.status(400).json({
       success: false,
-      message: 'Invalid psychic data'
+      message: error.message || 'Invalid psychic data'
     });
   }
 });
@@ -522,7 +571,8 @@ const getAllPsychics = asyncHandler(async (req, res) => {
       gender,
       minRate,
       maxRate,
-      search
+      search,
+      category // Add category filter
     } = req.query;
 
     const filter = {};
@@ -535,6 +585,17 @@ const getAllPsychics = asyncHandler(async (req, res) => {
       filter.gender = gender;
     }
     
+    // Add category filter
+    if (category) {
+      // Handle multiple categories if passed as comma-separated
+      if (category.includes(',')) {
+        const categories = category.split(',');
+        filter.category = { $in: categories };
+      } else {
+        filter.category = category;
+      }
+    }
+    
     if (minRate || maxRate) {
       filter.ratePerMin = {};
       if (minRate) filter.ratePerMin.$gte = Number(minRate);
@@ -544,7 +605,9 @@ const getAllPsychics = asyncHandler(async (req, res) => {
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
-        { bio: { $regex: search, $options: 'i' } }
+        { bio: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } }, // Search in category too
+        { specialization: { $regex: search, $options: 'i' } }
       ];
     }
 
@@ -553,7 +616,7 @@ const getAllPsychics = asyncHandler(async (req, res) => {
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
     const psychics = await Psychic.find(filter)
-      .select('name bio ratePerMin gender isVerified image createdAt updatedAt') // Add image
+      .select('name bio ratePerMin gender isVerified image category createdAt updatedAt specialization abilities languages experience') // Add category and other useful fields
       .sort(sort)
       .skip(skip)
       .limit(Number(limit));
@@ -561,11 +624,23 @@ const getAllPsychics = asyncHandler(async (req, res) => {
     // Add default image if missing
     const psychicsWithImages = psychics.map(psychic => ({
       ...psychic.toObject(),
-      image: psychic.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`
+      image: psychic.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`,
+      // Ensure category is included even if null/undefined
+      category: psychic.category || 'Reading' // Default category if not set
     }));
 
     const total = await Psychic.countDocuments(filter);
     const totalPages = Math.ceil(total / limit);
+
+    // Get category statistics
+    const categoryStats = await Psychic.aggregate([
+      { $match: filter },
+      { $group: {
+          _id: '$category',
+          count: { $sum: 1 }
+      }},
+      { $sort: { count: -1 } }
+    ]);
 
     res.json({
       success: true,
@@ -573,13 +648,63 @@ const getAllPsychics = asyncHandler(async (req, res) => {
       total,
       totalPages,
       currentPage: Number(page),
-      psychics: psychicsWithImages
+      psychics: psychicsWithImages,
+      filters: {
+        category: categoryStats.map(stat => ({
+          name: stat._id || 'Reading',
+          count: stat.count
+        }))
+      }
     });
   } catch (error) {
     console.error('Get all psychics error:', error);
     res.status(500).json({
       success: false,
       message: 'Server error while fetching psychics'
+    });
+  }
+});
+// @desc    Get all psychic categories with counts
+const getPsychicCategories = asyncHandler(async (req, res) => {
+  try {
+    // Get only categories that actually exist in the database
+    const categories = await Psychic.aggregate([
+      { 
+        $match: { 
+          isVerified: true,
+          category: { $exists: true, $ne: null, $ne: "" } // Only where category exists and is not empty
+        } 
+      },
+      { 
+        $group: {
+          _id: '$category',
+          count: { $sum: 1 },
+          averageRating: { $avg: '$averageRating' },
+          psychics: { $push: '$$ROOT' }
+        }
+      },
+      { 
+        $project: {
+          name: '$_id',
+          count: 1,
+          averageRating: 1,
+          _id: 0
+        }
+      },
+      { $sort: { count: -1 } }
+    ]);
+
+    console.log('Found categories:', categories); // Debug log
+
+    res.json({
+      success: true,
+      categories: categories
+    });
+  } catch (error) {
+    console.error('Get categories error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching categories'
     });
   }
 });
@@ -1802,6 +1927,7 @@ module.exports = {
   verifyPsychic,
   updatePsychicStatus,
   getPsychicStatuses,
+  getPsychicCategories,
   setIoInstance,
   unverifyPsychic,
   getPsychicChatAnalytics,

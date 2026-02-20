@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,16 +13,15 @@ import {
   Clock, 
   Calendar, 
   Search, 
-  Send, 
   Star, 
   Headphones,
-  Mic,
-  Video,
   Download,
-  Play,
-  Pause
+  Loader2,
+  AlertCircle
 } from "lucide-react";
 import Navigation from "./Navigator";
+import { useAuth } from "./screen/AuthContext";
+import axios from "axios";
 
 const ChatSessions = () => {
   // Color scheme
@@ -35,127 +34,123 @@ const ChatSessions = () => {
     mediumPurple: "#3D2B56",
   };
 
-  // Dummy chat sessions data
-  const [chatSessions, setChatSessions] = useState([
-    {
-      id: 1,
-      psychicId: 1,
-      psychicName: "KRS",
-      psychicImage: "https://images.unsplash.com/photo-1544725176-7c40e5a71c5e?w-150&h=150&fit=crop&crop=face",
-      specialty: "Astrologer",
-      lastMessage: "Your life path number suggests great success in creative fields.",
-      lastMessageTime: "10:30 AM",
-      unreadCount: 3,
-      totalMessages: 145,
-      sessionDuration: "45m 22s",
-      sessionDate: "2024-01-15",
-      sessionType: "chat",
-      status: "active",
-      creditsUsed: 25.50,
-      rating: 4.8
-    },
-    {
-      id: 2,
-      psychicId: 2,
-      psychicName: "Arkana",
-      psychicImage: "https://images.unsplash.com/photo-1581403341630-a6e0b9d2d257?w=150&h=150&fit=crop&crop=face",
-      specialty: "Tarot Master",
-      lastMessage: "The cards show a significant change coming in your career path.",
-      lastMessageTime: "Yesterday",
-      unreadCount: 0,
-      totalMessages: 89,
-      sessionDuration: "32m 15s",
-      sessionDate: "2024-01-14",
-      sessionType: "audio",
-      status: "active",
-      creditsUsed: 28.75,
-      recordingUrl: "/recordings/session2.mp3",
-      rating: 4.9
-    },
-    {
-      id: 3,
-      psychicId: 3,
-      psychicName: "Numeron",
-      psychicImage: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&h=150&fit=crop&crop=face",
-      specialty: "Numerology Expert",
-      lastMessage: "Your destiny number aligns perfectly with entrepreneurship.",
-      lastMessageTime: "2 days ago",
-      unreadCount: 0,
-      totalMessages: 67,
-      sessionDuration: "28m 10s",
-      sessionDate: "2024-01-12",
-      sessionType: "audio",
-      status: "completed",
-      creditsUsed: 35.20,
-      recordingUrl: "/recordings/session3.mp4",
-      rating: 4.7
-    },
-    {
-      id: 4,
-      psychicId: 4,
-      psychicName: "Amoura",
-      psychicImage: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&h=150&fit=crop&crop=face",
-      specialty: "Love Specialist",
-      lastMessage: "Your compatibility score with them is 85% - very promising!",
-      lastMessageTime: "3 days ago",
-      unreadCount: 1,
-      totalMessages: 112,
-      sessionDuration: "51m 45s",
-      sessionDate: "2024-01-10",
-      sessionType: "chat",
-      status: "completed",
-      creditsUsed: 28.90,
-      rating: 4.5
-    },
-    {
-      id: 5,
-      psychicId: 5,
-      psychicName: "Serena",
-      psychicImage: "https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face",
-      specialty: "Intuitive Empath",
-      lastMessage: "I sense you need to focus on self-care this week.",
-      lastMessageTime: "1 week ago",
-      unreadCount: 0,
-      totalMessages: 34,
-      sessionDuration: "19m 30s",
-      sessionDate: "2024-01-05",
-      sessionType: "audio",
-      status: "completed",
-      creditsUsed: 19.85,
-      recordingUrl: "/recordings/session5.mp3",
-      rating: 4.6
-    },
-    {
-      id: 6,
-      psychicId: 6,
-      psychicName: "Zenith",
-      psychicImage: "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&h=150&fit=crop&crop=face",
-      specialty: "Spiritual Guide",
-      lastMessage: "Meditation will help you connect with your inner self.",
-      lastMessageTime: "2 weeks ago",
-      unreadCount: 0,
-      totalMessages: 42,
-      sessionDuration: "25m 15s",
-      sessionDate: "2023-12-28",
-      sessionType: "video",
-      status: "completed",
-      creditsUsed: 32.50,
-      recordingUrl: "/recordings/session6.mp4",
-      rating: 4.9
-    },
-  ]);
-
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [sessionData, setSessionData] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [filter, setFilter] = useState("all"); // all, active, completed
-  const [sessionType, setSessionType] = useState("all"); // all, chat, audio, video
+  const [filter, setFilter] = useState("all");
+  const [sessionType, setSessionType] = useState("all");
+  const [playingAudio, setPlayingAudio] = useState(null);
 
-  const filteredSessions = chatSessions.filter(session => {
-    const matchesSearch = session.psychicName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         session.specialty.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = filter === "all" || session.status === filter;
-    const matchesType = sessionType === "all" || session.sessionType === sessionType;
-    return matchesSearch && matchesFilter && matchesType;
-  });
+  // Fetch session data when component mounts
+  useEffect(() => {
+    if (user?._id) {
+      fetchUserSessions();
+    }
+  }, [user]);
+
+
+const fetchUserSessions = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    
+    const token = localStorage.getItem('token');
+    
+    // Change this line to use /summary instead of /${user._id}
+    const response = await axios.get(
+      `${import.meta.env.VITE_BASE_URL}/api/usersession/summary`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      }
+    );
+
+    if (response.data.success) {
+      setSessionData(response.data.data);
+    }
+  } catch (err) {
+    console.error('Error fetching sessions:', err);
+    setError(err.response?.data?.message || 'Failed to load sessions');
+  } finally {
+    setLoading(false);
+  }
+};
+
+  // Combine calls and chats for display
+  const getAllSessions = () => {
+    if (!sessionData) return [];
+
+    const sessions = [];
+
+    // Add call sessions
+    sessionData.calls?.sessions?.forEach(call => {
+      sessions.push({
+        id: call._id,
+        type: 'call',
+        psychicId: call.psychicId?._id,
+        psychicName: call.psychicId?.displayName || call.psychicId?.name || 'Unknown',
+        psychicImage: call.psychicId?.profileImage,
+        specialty: call.psychicId?.specialty || 'Psychic',
+        lastMessage: `Call ${call.status === 'in-progress' ? 'in progress' : 'completed'}`,
+        lastMessageTime: new Date(call.updatedAt).toLocaleTimeString(),
+        unreadCount: 0,
+        totalMessages: 0,
+        duration: call.startTime && call.endTime ? 
+          formatDuration(Math.floor((new Date(call.endTime) - new Date(call.startTime)) / 1000)) : 
+          call.status === 'in-progress' ? 'Ongoing' : 'No duration',
+        date: call.startTime || call.createdAt,
+        sessionType: 'audio',
+        status: call.status === 'in-progress' ? 'active' : 
+                call.status === 'ended' ? 'completed' : call.status,
+        creditsUsed: call.totalCreditsUsed || 0,
+        rating: 0, // You might want to add rating to your schema
+        recordingUrl: call.recordingUrl
+      });
+    });
+
+    // Add chat sessions
+    sessionData.chats?.sessions?.forEach(chat => {
+      sessions.push({
+        id: chat._id,
+        type: 'chat',
+        psychicId: chat.psychicId?._id,
+        psychicName: chat.psychicId?.displayName || chat.psychicId?.name || 'Unknown',
+        psychicImage: chat.psychicId?.profileImage,
+        specialty: chat.psychicId?.specialty || 'Psychic',
+        lastMessage: chat.recentMessages?.[0]?.content || 'No messages yet',
+        lastMessageTime: new Date(chat.updatedAt).toLocaleTimeString(),
+        unreadCount: chat.messageStats?.unread || 0,
+        totalMessages: chat.messageStats?.total || 0,
+        duration: 'Chat session',
+        date: chat.updatedAt || chat.createdAt,
+        sessionType: 'chat',
+        status: chat.status || 'completed',
+        creditsUsed: 0, // Chats might not use credits
+        rating: 0,
+        recentMessages: chat.recentMessages
+      });
+    });
+
+    // Sort by date (most recent first)
+    return sessions.sort((a, b) => new Date(b.date) - new Date(a.date));
+  };
+
+  const formatDuration = (seconds) => {
+    if (!seconds || seconds < 0) return '0m';
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const remainingSeconds = seconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (remainingSeconds > 0 && hours === 0) parts.push(`${remainingSeconds}s`);
+    
+    return parts.join(' ') || '0m';
+  };
 
   const formatDate = (dateStr) => {
     return new Date(dateStr).toLocaleDateString('en-US', {
@@ -168,109 +163,185 @@ const ChatSessions = () => {
   const getSessionTypeIcon = (type) => {
     switch (type) {
       case 'audio': return <Headphones className="h-4 w-4" />;
+      case 'call': return <Phone className="h-4 w-4" />;
       default: return <MessageCircle className="h-4 w-4" />;
     }
   };
 
   const getSessionTypeColor = (type) => {
     switch (type) {
-      case 'audio': return '#10B981';
-      case 'video': return '#EF4444';
+      case 'audio':
+      case 'call':
+        return '#10B981';
       default: return colors.antiqueGold;
     }
   };
 
-  const totalCreditsUsed = chatSessions.reduce((sum, session) => sum + session.creditsUsed, 0);
-  const activeSessions = chatSessions.filter(s => s.status === 'active').length;
-  const totalMessages = chatSessions.reduce((sum, session) => sum + session.totalMessages, 0);
-  const totalDuration = chatSessions.reduce((total, session) => {
-    const [minutes, seconds] = session.sessionDuration.split('m ')[0].split('m')[0].split('s')[0].split('m ');
-    return total + parseInt(minutes) + (parseInt(seconds) / 60);
-  }, 0);
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'active':
+      case 'in-progress':
+        return '#10B981';
+      case 'completed':
+      case 'ended':
+        return colors.antiqueGold;
+      case 'initiated':
+      case 'ringing':
+        return '#F59E0B';
+      case 'failed':
+      case 'rejected':
+        return '#EF4444';
+      default:
+        return colors.antiqueGold;
+    }
+  };
+
+  const filteredSessions = getAllSessions().filter(session => {
+    const matchesSearch = session.psychicName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         session.specialty.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesFilter = filter === "all" || 
+                         (filter === "active" && ['active', 'in-progress', 'initiated', 'ringing'].includes(session.status)) ||
+                         (filter === "completed" && ['completed', 'ended'].includes(session.status));
+    const matchesType = sessionType === "all" || session.sessionType === sessionType;
+    return matchesSearch && matchesFilter && matchesType;
+  });
+
+  if (loading) {
+    return (
+      <div className="px-2 sm:px-4" style={{ backgroundColor: colors.softIvory }}>
+        <div className="max-w-7xl mx-auto pb-10">
+          <Navigation />
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-8 w-8 animate-spin" style={{ color: colors.antiqueGold }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="px-2 sm:px-4" style={{ backgroundColor: colors.softIvory }}>
+        <div className="max-w-7xl mx-auto pb-10">
+          <Navigation />
+          <Card className="shadow-sm text-center py-12" style={{ backgroundColor: colors.lightGold + "20" }}>
+            <CardContent>
+              <div className="inline-flex items-center justify-center w-16 h-16 rounded-full mb-4"
+                style={{ backgroundColor: colors.lightGold }}>
+                <AlertCircle className="h-8 w-8" style={{ color: colors.antiqueGold }} />
+              </div>
+              <h3 className="text-xl font-bold mb-2" style={{ color: colors.deepPurple }}>
+                Error Loading Sessions
+              </h3>
+              <p className="mb-4" style={{ color: colors.deepPurple + "CC" }}>
+                {error}
+              </p>
+              <Button
+                onClick={fetchUserSessions}
+                style={{ 
+                  backgroundColor: colors.antiqueGold,
+                  color: colors.deepPurple
+                }}
+              >
+                Try Again
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
-     <div className="px-2 sm:px-4" style={{ backgroundColor: colors.softIvory }}>
-          <div className="max-w-7xl mx-auto pb-10">
-            <Navigation />
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div className="px-2 sm:px-4" style={{ backgroundColor: colors.softIvory }}>
+      <div className="max-w-7xl mx-auto pb-10">
+        <Navigation />
+        
+        <div className="mt-4">
           <h1 className="text-3xl font-bold mb-2" style={{ color: colors.deepPurple }}>
             Sessions History
           </h1>
           <p className="text-lg" style={{ color: colors.deepPurple + "CC" }}>
-            Manage your chat, audio, and video sessions
+            Manage your chat and call sessions with psychics
           </p>
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Total Sessions</p>
-                  <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                    {chatSessions.length}
-                  </p>
+        {sessionData && (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+            <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Total Sessions</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                      {sessionData.summary.totalCalls + sessionData.summary.totalChats}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: colors.antiqueGold + "20" }}>
+                    <MessageCircle className="h-6 w-6" style={{ color: colors.antiqueGold }} />
+                  </div>
                 </div>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                  <MessageCircle className="h-6 w-6" style={{ color: colors.antiqueGold }} />
+              </CardContent>
+            </Card>
+            
+            <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Psychics</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                      {sessionData.summary.totalPsychicsInteracted}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: colors.antiqueGold + "20" }}>
+                    <Star className="h-6 w-6" style={{ color: colors.antiqueGold }} />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Active Chats</p>
-                  <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                    {activeSessions}
-                  </p>
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Call Duration</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                      {sessionData.summary.totalCallDuration}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: colors.antiqueGold + "20" }}>
+                    <Phone className="h-6 w-6" style={{ color: colors.antiqueGold }} />
+                  </div>
                 </div>
-                <div className="w-10 h-10 rounded-full bg-green-500 bg-opacity-20 flex items-center justify-center">
-                  <MessageCircle className="h-6 w-6 text-green-600" />
+              </CardContent>
+            </Card>
+
+            <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
+              <CardContent className="pt-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Messages</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                      {sessionData.summary.totalMessages}
+                    </p>
+                  </div>
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: colors.antiqueGold + "20" }}>
+                    <MessageCircle className="h-6 w-6" style={{ color: colors.antiqueGold }} />
+                  </div>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Total Duration</p>
-                  <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                    {Math.floor(totalDuration)}h {Math.round((totalDuration % 1) * 60)}m
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                  <Clock className="h-6 w-6" style={{ color: colors.antiqueGold }} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          <Card className="shadow-sm" style={{ backgroundColor: colors.lightGold + "40" }}>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Credits Used</p>
-                  <p className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                    ${totalCreditsUsed.toFixed(2)}
-                  </p>
-                </div>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                  style={{ backgroundColor: colors.antiqueGold + "20" }}>
-                  <Star className="h-6 w-6" style={{ color: colors.antiqueGold }} />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Session Type Tabs */}
         <Tabs defaultValue="all" className="mb-6" onValueChange={setSessionType}>
-          <TabsList className="grid w-full md:w-auto grid-cols-4 mb-4" 
+          <TabsList className="grid w-full md:w-auto grid-cols-3 mb-4" 
             style={{ backgroundColor: colors.lightGold + "40" }}>
             <TabsTrigger value="all">All Sessions</TabsTrigger>
             <TabsTrigger value="chat">
@@ -278,10 +349,9 @@ const ChatSessions = () => {
               Chat
             </TabsTrigger>
             <TabsTrigger value="audio">
-              <Headphones className="h-4 w-4 mr-2" />
-              Audio
+              <Phone className="h-4 w-4 mr-2" />
+              Calls
             </TabsTrigger>
-          
           </TabsList>
         </Tabs>
 
@@ -293,7 +363,7 @@ const ChatSessions = () => {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4" 
                   style={{ color: colors.deepPurple + "60" }} />
                 <Input
-                  placeholder="Search psychics or messages..."
+                  placeholder="Search psychics..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10"
@@ -352,10 +422,10 @@ const ChatSessions = () => {
           </CardContent>
         </Card>
 
-        {/* Chat Sessions List */}
+        {/* Sessions List */}
         <div className="space-y-4">
           {filteredSessions.map((session) => (
-            <Card key={session.id} className="shadow-sm hover:shadow-md transition-shadow duration-300"
+            <Card key={`${session.type}-${session.id}`} className="shadow-sm hover:shadow-md transition-shadow duration-300"
               style={{ backgroundColor: colors.lightGold + "20" }}>
               <CardContent className="pt-6">
                 <div className="flex flex-col md:flex-row md:items-center gap-4">
@@ -369,7 +439,7 @@ const ChatSessions = () => {
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <h3 className="font-bold truncate text-lg" style={{ color: colors.deepPurple }}>
                           {session.psychicName}
                         </h3>
@@ -381,10 +451,10 @@ const ChatSessions = () => {
                           }}>
                           <span className="flex items-center gap-1">
                             {getSessionTypeIcon(session.sessionType)}
-                            {session.sessionType.charAt(0).toUpperCase() + session.sessionType.slice(1)}
+                            {session.sessionType === 'audio' ? 'Call' : 'Chat'}
                           </span>
                         </Badge>
-                        {session.status === "active" && (
+                        {session.status === 'active' && (
                           <Badge className="bg-green-500 hover:bg-green-600">
                             Live
                           </Badge>
@@ -398,15 +468,21 @@ const ChatSessions = () => {
                           }}>
                           {session.specialty}
                         </Badge>
-                        <div className="flex items-center gap-1 text-sm"
-                          style={{ color: colors.deepPurple + "CC" }}>
-                          <Star className="h-3 w-3 fill-current" style={{ color: colors.antiqueGold }} />
-                          {session.rating}
-                        </div>
+                        <Badge
+                          style={{ 
+                            backgroundColor: getStatusColor(session.status) + "20",
+                            color: getStatusColor(session.status),
+                            border: 'none'
+                          }}
+                        >
+                          {session.status}
+                        </Badge>
                       </div>
-                      <p className="text-sm truncate mt-1" style={{ color: colors.deepPurple + "CC" }}>
-                        {session.lastMessage}
-                      </p>
+                      {session.lastMessage && (
+                        <p className="text-sm truncate mt-1" style={{ color: colors.deepPurple + "CC" }}>
+                          {session.lastMessage}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -418,7 +494,7 @@ const ChatSessions = () => {
                         <span>Duration</span>
                       </div>
                       <div className="font-semibold" style={{ color: colors.deepPurple }}>
-                        {session.sessionDuration}
+                        {session.duration}
                       </div>
                     </div>
                     <div>
@@ -427,25 +503,57 @@ const ChatSessions = () => {
                         <span>Date</span>
                       </div>
                       <div className="font-semibold" style={{ color: colors.deepPurple }}>
-                        {formatDate(session.sessionDate)}
+                        {formatDate(session.date)}
                       </div>
                     </div>
                     <div>
-                      <div style={{ color: colors.deepPurple + "CC" }}>Credits</div>
+                      <div style={{ color: colors.deepPurple + "CC" }}>
+                        {session.type === 'call' ? 'Credits' : 'Messages'}
+                      </div>
                       <div className="font-semibold" style={{ color: colors.deepPurple }}>
-                        ${session.creditsUsed.toFixed(2)}
+                        {session.type === 'call' ? `$${session.creditsUsed.toFixed(2)}` : session.totalMessages}
                       </div>
                     </div>
                     <div>
-                      <div style={{ color: colors.deepPurple + "CC" }}>Messages</div>
-                      <div className="font-semibold" style={{ color: colors.deepPurple }}>
-                        {session.totalMessages}
-                      </div>
+                      {session.unreadCount > 0 && (
+                        <>
+                          <div style={{ color: colors.deepPurple + "CC" }}>Unread</div>
+                          <div className="font-semibold" style={{ color: '#EF4444' }}>
+                            {session.unreadCount} new
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
 
                   {/* Actions */}
-                
+                  {session.status === 'active' && session.type === 'chat' && (
+                    <Button
+                      className="whitespace-nowrap"
+                      style={{ 
+                        backgroundColor: colors.antiqueGold,
+                        color: colors.deepPurple
+                      }}
+                    >
+                      <MessageCircle className="h-4 w-4 mr-2" />
+                      Continue Chat
+                    </Button>
+                  )}
+                  
+                  {session.recordingUrl && (
+                    <Button
+                      variant="outline"
+                      className="whitespace-nowrap"
+                      style={{ 
+                        borderColor: colors.antiqueGold,
+                        color: colors.deepPurple
+                      }}
+                      onClick={() => window.open(session.recordingUrl, '_blank')}
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Recording
+                    </Button>
+                  )}
                 </div>
               </CardContent>
             </Card>
@@ -466,7 +574,7 @@ const ChatSessions = () => {
               <p className="mb-4" style={{ color: colors.deepPurple + "CC" }}>
                 {searchTerm 
                   ? 'No sessions match your search. Try different keywords.'
-                  : 'Start a chat with a psychic to begin your journey.'}
+                  : 'Start a chat or call with a psychic to begin your journey.'}
               </p>
               <Button
                 style={{ 
