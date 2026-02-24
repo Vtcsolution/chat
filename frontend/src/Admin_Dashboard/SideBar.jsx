@@ -15,6 +15,7 @@ import {
   UserCog,         // ← added for New Psychics
 } from 'lucide-react';
 import { MdOutlineAttachEmail } from "react-icons/md";
+import { Card } from "@mui/material";
 
 const Doctor_Side_Bar = ({ side }) => {
   const location = useLocation();
@@ -54,6 +55,9 @@ const Doctor_Side_Bar = ({ side }) => {
     }
     else if (path.includes('/admin/dashboard/allusers')) {
       setActiveItem('users');
+    }
+    else if (path.includes('/admin/dashboard/psychic-earnings')) {
+      setActiveItem('psychic-earning');
     }
     else if (path.includes('/admin/dashboard/human-reviews')) {
       setActiveItem('coach-reviews');
@@ -103,6 +107,12 @@ const Doctor_Side_Bar = ({ side }) => {
       label: 'Chat / Calls',
       icon: <MessageCircle className="h-5 w-5" />,
       path: '/admin/dashboard/human-chat',
+    },
+    {
+      id: 'psychic-earning',
+      label: 'Psychic Earnings',
+      icon: <Card className="h-5 w-5" />,
+      path: '/admin/dashboard/psychic-earnings',
     },
     {
       id: 'users',

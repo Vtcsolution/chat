@@ -11,6 +11,8 @@ const mongoose = require('mongoose');
 
 const getAllChatData = async (req, res) => {
   try {
+    const COMMISSION_RATE = 0.25; // 25% to psychics, 75% to platform
+
     // Run all count queries in parallel for better performance
     const [
       totalPsychics,
@@ -109,12 +111,59 @@ const getAllChatData = async (req, res) => {
       {
         $group: {
           _id: null,
-          totalRevenue: { $sum: '$totalAmountPaid' },
+          totalPaidByUsers: { $sum: '$totalAmountPaid' },
+          psychicEarnings: { $sum: { $multiply: ['$totalAmountPaid', COMMISSION_RATE] } },
+          platformEarnings: { $sum: { $multiply: ['$totalAmountPaid', 0.75] } },
           totalSeconds: { $sum: '$paidSession.totalSeconds' },
           count: { $sum: 1 }
         }
       }
     ]);
+
+    // Get call revenue stats with split
+    const callRevenueStats = await ActiveCallSession.aggregate([
+      {
+        $match: {
+          status: 'ended',
+          totalCreditsUsed: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          totalPaidByUsers: { $sum: '$totalCreditsUsed' },
+          psychicEarnings: { $sum: { $multiply: ['$totalCreditsUsed', COMMISSION_RATE] } },
+          platformEarnings: { $sum: { $multiply: ['$totalCreditsUsed', 0.75] } },
+          totalSessions: { $sum: 1 },
+          averageCredits: { $avg: '$totalCreditsUsed' },
+          totalDuration: { 
+            $sum: { 
+              $divide: [
+                { $subtract: ['$endTime', '$startTime'] },
+                60000 // Convert to minutes
+              ]
+            }
+          }
+        }
+      }
+    ]);
+
+    const chatRevenue = revenueStats[0] || {
+      totalPaidByUsers: 0,
+      psychicEarnings: 0,
+      platformEarnings: 0,
+      totalSeconds: 0,
+      count: 0
+    };
+
+    const callRevenue = callRevenueStats[0] || {
+      totalPaidByUsers: 0,
+      psychicEarnings: 0,
+      platformEarnings: 0,
+      totalSessions: 0,
+      averageCredits: 0,
+      totalDuration: 0
+    };
 
     // Get psychic list with basic info
     const psychicList = await Psychic.find()
@@ -122,7 +171,7 @@ const getAllChatData = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10);
 
-    // Get recent paid timers
+    // Get recent paid timers with split
     const recentPaidTimers = await ChatRequest.find({
       status: 'completed',
       totalAmountPaid: { $gt: 0 }
@@ -141,7 +190,7 @@ const getAllChatData = async (req, res) => {
     .sort({ lastMessageAt: -1 })
     .limit(10);
 
-    // Get recent call sessions
+    // Get recent call sessions with split
     const recentCallSessions = await ActiveCallSession.find({
       status: { $in: ['in-progress', 'ended'] }
     })
@@ -149,31 +198,6 @@ const getAllChatData = async (req, res) => {
     .populate('psychicId', 'name email ratePerMin')
     .sort({ updatedAt: -1 })
     .limit(10);
-
-    // Get call session statistics
-    const callStats = await ActiveCallSession.aggregate([
-      {
-        $match: {
-          status: 'ended',
-          totalCreditsUsed: { $gt: 0 }
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalCredits: { $sum: '$totalCreditsUsed' },
-          averageCredits: { $avg: '$totalCreditsUsed' },
-          totalDuration: { 
-            $sum: { 
-              $divide: [
-                { $subtract: ['$endTime', '$startTime'] },
-                60000 // Convert to minutes
-              ]
-            }
-          }
-        }
-      }
-    ]);
 
     // Prepare response data
     const dashboardData = {
@@ -197,21 +221,41 @@ const getAllChatData = async (req, res) => {
         sessions: recentSessions
       },
       financials: {
-        totalRevenue: revenueStats[0]?.totalRevenue || 0,
-        totalPaidTime: Math.round((revenueStats[0]?.totalSeconds || 0) / 3600 * 100) / 100, // in hours
-        avgSessionValue: revenueStats[0]?.count > 0 ? 
-          Math.round((revenueStats[0]?.totalRevenue / revenueStats[0]?.count) * 100) / 100 : 0,
-        // Call revenue (1 credit = $1)
-        totalCallRevenue: totalCallCredits[0]?.totalCredits || 0,
-        averageCallValue: callStats[0]?.averageCredits || 0,
-        totalCallMinutes: Math.round(callStats[0]?.totalDuration || 0)
+        // Chat revenue
+        chatTotalPaidByUsers: chatRevenue.totalPaidByUsers,
+        chatPsychicEarnings: chatRevenue.psychicEarnings,
+        chatPlatformEarnings: chatRevenue.platformEarnings,
+        totalPaidTime: Math.round((chatRevenue.totalSeconds || 0) / 3600 * 100) / 100, // in hours
+        avgChatSessionValue: chatRevenue.count > 0 ? 
+          Math.round((chatRevenue.totalPaidByUsers / chatRevenue.count) * 100) / 100 : 0,
+        
+        // Call revenue
+        callTotalPaidByUsers: callRevenue.totalPaidByUsers,
+        callPsychicEarnings: callRevenue.psychicEarnings,
+        callPlatformEarnings: callRevenue.platformEarnings,
+        averageCallValue: callRevenue.averageCredits || 0,
+        totalCallMinutes: Math.round(callRevenue.totalDuration || 0),
+        
+        // Combined totals
+        totalPaidByUsers: chatRevenue.totalPaidByUsers + callRevenue.totalPaidByUsers,
+        totalPsychicEarnings: chatRevenue.psychicEarnings + callRevenue.psychicEarnings,
+        totalPlatformEarnings: chatRevenue.platformEarnings + callRevenue.platformEarnings,
+        totalSessions: chatRevenue.count + callRevenue.totalSessions
       },
       callStatistics: {
         totalSessions: totalCallSessions,
         activeSessions: activeCallSessions,
         completedSessions: completedCallSessions,
-        totalCreditsUsed: totalCallCredits[0]?.totalCredits || 0,
-        averageCallDuration: Math.round(callStats[0]?.averageCredits || 0) // minutes
+        totalCreditsUsed: callRevenue.totalPaidByUsers,
+        totalPaidByUsers: callRevenue.totalPaidByUsers,
+        psychicEarnings: callRevenue.psychicEarnings,
+        platformEarnings: callRevenue.platformEarnings,
+        averageCallDuration: Math.round(callRevenue.averageCredits || 0) // minutes
+      },
+      splitInfo: {
+        psychicRate: COMMISSION_RATE * 100 + '%',
+        platformRate: '75%',
+        description: 'Psychics receive 25% of all payments, platform retains 75%'
       },
       lists: {
         psychics: psychicList,
@@ -219,7 +263,9 @@ const getAllChatData = async (req, res) => {
           _id: timer._id,
           user: timer.user?.name || 'Unknown User',
           psychic: timer.psychic?.name || 'Unknown Psychic',
-          amount: timer.totalAmountPaid,
+          amount: timer.totalAmountPaid, // Total paid by user
+          psychicEarnings: timer.totalAmountPaid * COMMISSION_RATE, // Psychic's 25%
+          platformEarnings: timer.totalAmountPaid * 0.75, // Platform's 75%
           duration: timer.paidSession?.totalSeconds ? 
             Math.round(timer.paidSession.totalSeconds / 60 * 100) / 100 : 0, // in minutes
           endedAt: timer.endedAt
@@ -240,7 +286,9 @@ const getAllChatData = async (req, res) => {
           duration: call.startTime && call.endTime ? 
             Math.round((new Date(call.endTime) - new Date(call.startTime)) / 60000) : 0, // in minutes
           creditsUsed: call.totalCreditsUsed || 0,
-          revenue: call.totalCreditsUsed || 0, // 1 credit = $1
+          totalPaidByUsers: call.totalCreditsUsed || 0,
+          psychicEarnings: (call.totalCreditsUsed || 0) * COMMISSION_RATE,
+          platformEarnings: (call.totalCreditsUsed || 0) * 0.75,
           startTime: call.startTime,
           endTime: call.endTime,
           isFreeSession: call.isFreeSession
@@ -266,11 +314,7 @@ const getAllChatData = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get detailed information about a specific psychic
- * @route   GET /api/admin/chats/psychics/:id
- * @access  Private/Admin
- */
+
 const getPsychicDetails = async (req, res) => {
   try {
     const { id } = req.params;
@@ -286,7 +330,7 @@ const getPsychicDetails = async (req, res) => {
 
     // 1. Get psychic basic information
     const psychic = await Psychic.findById(id)
-      .select('name email image ratePerMin abilities averageRating totalRatings bio gender isVerified type status createdAt updatedAt')
+      .select('name email image ratePerMin abilities averageRating totalRatings bio gender isVerified type status createdAt updatedAt commissionRate')
       .lean();
 
     if (!psychic) {
@@ -316,12 +360,12 @@ const getPsychicDetails = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(20);
 
-    // 5. Calculate statistics
+    // 5. Calculate statistics with 75/25 split
     const totalSessions = chatSessions.length;
     const totalPaidTimers = paidTimers.length;
     const totalCallSessions = callSessions.length;
     
-    // Calculate total earnings from paid timers
+    // Calculate total earnings from paid timers (total amount paid by users)
     const earningsStats = await ChatRequest.aggregate([
       {
         $match: {
@@ -333,14 +377,14 @@ const getPsychicDetails = async (req, res) => {
       {
         $group: {
           _id: '$psychic',
-          totalEarnings: { $sum: '$totalAmountPaid' },
+          totalPaidByUsers: { $sum: '$totalAmountPaid' }, // Total amount users paid
           totalSessions: { $sum: 1 },
           totalTime: { $sum: '$paidSession.totalSeconds' }
         }
       }
     ]);
 
-    // Calculate total earnings from call sessions (1 credit = $1)
+    // Calculate total earnings from call sessions (1 credit = $1) - total amount paid by users
     const callEarningsStats = await ActiveCallSession.aggregate([
       {
         $match: {
@@ -352,7 +396,7 @@ const getPsychicDetails = async (req, res) => {
       {
         $group: {
           _id: '$psychicId',
-          totalEarnings: { $sum: '$totalCreditsUsed' }, // 1 credit = $1
+          totalPaidByUsers: { $sum: '$totalCreditsUsed' }, // Total amount users paid (credits = dollars)
           totalSessions: { $sum: 1 },
           totalDuration: { 
             $sum: { 
@@ -367,19 +411,26 @@ const getPsychicDetails = async (req, res) => {
     ]);
 
     const earningsData = earningsStats[0] || {
-      totalEarnings: 0,
+      totalPaidByUsers: 0,
       totalSessions: 0,
       totalTime: 0
     };
 
     const callEarningsData = callEarningsStats[0] || {
-      totalEarnings: 0,
+      totalPaidByUsers: 0,
       totalSessions: 0,
       totalDuration: 0
     };
 
-    // Combine total earnings
-    const totalEarnings = earningsData.totalEarnings + callEarningsData.totalEarnings;
+    // Calculate psychic commission (25% of total paid by users)
+    const psychicCommissionRate = 0.25; // 25%
+    
+    const totalPaidByUsers = earningsData.totalPaidByUsers + callEarningsData.totalPaidByUsers;
+    const psychicEarnings = totalPaidByUsers * psychicCommissionRate; // 25% to psychic
+    const platformEarnings = totalPaidByUsers * 0.75; // 75% to platform
+
+    const chatPsychicEarnings = earningsData.totalPaidByUsers * psychicCommissionRate;
+    const callPsychicEarnings = callEarningsData.totalPaidByUsers * psychicCommissionRate;
 
     // 6. Get recent reviews/ratings (if available in your model)
     const recentReviews = psychic.reviews || [];
@@ -407,7 +458,8 @@ const getPsychicDetails = async (req, res) => {
         $group: {
           _id: '$user',
           totalSessions: { $sum: 1 },
-          totalSpent: { $sum: '$totalAmountPaid' },
+          totalSpentByUser: { $sum: '$totalAmountPaid' }, // Total user paid
+          psychicEarnings: { $sum: { $multiply: ['$totalAmountPaid', psychicCommissionRate] } }, // Psychic's 25%
           lastSession: { $max: '$endedAt' },
           type: { $first: 'chat' }
         }
@@ -428,7 +480,8 @@ const getPsychicDetails = async (req, res) => {
         $group: {
           _id: '$userId',
           totalSessions: { $sum: 1 },
-          totalSpent: { $sum: '$totalCreditsUsed' }, // 1 credit = $1
+          totalSpentByUser: { $sum: '$totalCreditsUsed' }, // Total user paid (credits = dollars)
+          psychicEarnings: { $sum: { $multiply: ['$totalCreditsUsed', psychicCommissionRate] } }, // Psychic's 25%
           lastSession: { $max: '$endTime' },
           type: { $first: 'call' }
         }
@@ -450,17 +503,18 @@ const getPsychicDetails = async (req, res) => {
           userName: user?.name || 'Unknown User',
           userEmail: user?.email || '',
           totalSessions: interaction.totalSessions,
-          totalSpent: interaction.totalSpent,
+          totalSpentByUser: interaction.totalSpentByUser, // What user paid
+          psychicEarnings: interaction.psychicEarnings, // Psychic's 25%
           lastSession: interaction.lastSession,
           type: interaction.type
         };
       })
     );
 
-    // Sort by total spent descending
-    userInteractions.sort((a, b) => b.totalSpent - a.totalSpent);
+    // Sort by psychic earnings descending
+    userInteractions.sort((a, b) => b.psychicEarnings - a.psychicEarnings);
 
-    // 9. Get monthly earnings (last 6 months) - combined
+    // 9. Get monthly earnings (last 6 months) - with split
     const sixMonthsAgo = new Date();
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
 
@@ -478,7 +532,9 @@ const getPsychicDetails = async (req, res) => {
             year: { $year: '$endedAt' },
             month: { $month: '$endedAt' }
           },
-          totalEarnings: { $sum: '$totalAmountPaid' },
+          totalPaidByUsers: { $sum: '$totalAmountPaid' },
+          psychicEarnings: { $sum: { $multiply: ['$totalAmountPaid', psychicCommissionRate] } },
+          platformEarnings: { $sum: { $multiply: ['$totalAmountPaid', 0.75] } },
           sessionCount: { $sum: 1 },
           totalMinutes: { 
             $sum: { 
@@ -505,7 +561,9 @@ const getPsychicDetails = async (req, res) => {
             year: { $year: '$endTime' },
             month: { $month: '$endTime' }
           },
-          totalEarnings: { $sum: '$totalCreditsUsed' },
+          totalPaidByUsers: { $sum: '$totalCreditsUsed' },
+          psychicEarnings: { $sum: { $multiply: ['$totalCreditsUsed', psychicCommissionRate] } },
+          platformEarnings: { $sum: { $multiply: ['$totalCreditsUsed', 0.75] } },
           sessionCount: { $sum: 1 },
           totalMinutes: { 
             $sum: { 
@@ -527,7 +585,9 @@ const getPsychicDetails = async (req, res) => {
       const key = `${item._id.year}-${item._id.month}`;
       if (monthlyEarningsMap.has(key)) {
         const existing = monthlyEarningsMap.get(key);
-        existing.totalEarnings += item.totalEarnings;
+        existing.totalPaidByUsers += item.totalPaidByUsers;
+        existing.psychicEarnings += item.psychicEarnings;
+        existing.platformEarnings += item.platformEarnings;
         existing.sessionCount += item.sessionCount;
         existing.totalMinutes += item.totalMinutes;
       } else {
@@ -546,28 +606,39 @@ const getPsychicDetails = async (req, res) => {
       .map(item => ({
         month: item._id.month,
         year: item._id.year,
-        totalEarnings: item.totalEarnings,
+        totalPaidByUsers: item.totalPaidByUsers,
+        psychicEarnings: Math.round(item.psychicEarnings * 100) / 100,
+        platformEarnings: Math.round(item.platformEarnings * 100) / 100,
         sessionCount: item.sessionCount,
         totalMinutes: Math.round(item.totalMinutes),
         period: getMonthName(item._id.month) + ' ' + item._id.year
       }));
+
+    // Calculate earnings per hour (psychic's share)
+    const totalHoursWorked = (earningsData.totalTime / 3600) + (callEarningsData.totalDuration / 60);
+    const earningsPerHour = totalHoursWorked > 0 ? psychicEarnings / totalHoursWorked : 0;
 
     // 10. Prepare the response data
     const psychicDetails = {
       profile: {
         ...psychic,
         joinDate: psychic.createdAt,
-        isActive: psychic.status === 'active'
+        isActive: psychic.status === 'active',
+        commissionRate: psychicCommissionRate // 25%
       },
       statistics: {
         totals: {
           chatSessions: totalSessions,
           paidTimers: totalPaidTimers,
           callSessions: totalCallSessions,
-          totalEarnings: totalEarnings,
-          chatEarnings: earningsData.totalEarnings,
-          callEarnings: callEarningsData.totalEarnings,
-          hoursWorked: Math.round((earningsData.totalTime / 3600 + callEarningsData.totalDuration / 60) * 100) / 100,
+          totalPaidByUsers: totalPaidByUsers, // Total amount users paid
+          psychicEarnings: psychicEarnings, // Psychic's 25% share
+          platformEarnings: platformEarnings, // Platform's 75% share
+          chatPaidByUsers: earningsData.totalPaidByUsers,
+          callPaidByUsers: callEarningsData.totalPaidByUsers,
+          chatPsychicEarnings: chatPsychicEarnings,
+          callPsychicEarnings: callPsychicEarnings,
+          hoursWorked: Math.round(totalHoursWorked * 100) / 100,
           ratings: psychic.totalRatings || 0,
           averageRating: psychic.averageRating || 0
         },
@@ -582,22 +653,29 @@ const getPsychicDetails = async (req, res) => {
           chatCompletionRate: totalSessions > 0 ? Math.round((completedChats / totalSessions) * 100) : 0,
           callCompletionRate: totalCallSessions > 0 ? Math.round((completedCalls / totalCallSessions) * 100) : 0,
           avgEarningsPerChat: earningsData.totalSessions > 0 ? 
-            Math.round((earningsData.totalEarnings / earningsData.totalSessions) * 100) / 100 : 0,
+            Math.round((chatPsychicEarnings / earningsData.totalSessions) * 100) / 100 : 0,
           avgEarningsPerCall: callEarningsData.totalSessions > 0 ? 
-            Math.round((callEarningsData.totalEarnings / callEarningsData.totalSessions) * 100) / 100 : 0,
-          earningsPerHour: calculateEarningsPerHour(earningsData, callEarningsData)
+            Math.round((callPsychicEarnings / callEarningsData.totalSessions) * 100) / 100 : 0,
+          earningsPerHour: Math.round(earningsPerHour * 100) / 100
         }
       },
       financials: {
-        totalEarnings: totalEarnings,
-        chatEarnings: earningsData.totalEarnings,
-        callEarnings: callEarningsData.totalEarnings,
+        totalPaidByUsers: totalPaidByUsers,
+        psychicEarnings: psychicEarnings,
+        platformEarnings: platformEarnings,
+        chatPaidByUsers: earningsData.totalPaidByUsers,
+        callPaidByUsers: callEarningsData.totalPaidByUsers,
+        chatPsychicEarnings: chatPsychicEarnings,
+        callPsychicEarnings: callPsychicEarnings,
         avgEarningsPerMonth: monthlyEarnings.length > 0 ? 
-          Math.round(monthlyEarnings.reduce((sum, month) => sum + month.totalEarnings, 0) / monthlyEarnings.length * 100) / 100 : 0,
+          Math.round(monthlyEarnings.reduce((sum, month) => sum + month.psychicEarnings, 0) / monthlyEarnings.length * 100) / 100 : 0,
         monthlyBreakdown: monthlyEarnings,
         chatRatePerMinute: psychic.ratePerMin,
         callRatePerMinute: 1, // 1 credit = $1 per minute for calls
-        estimatedMonthlyEarnings: calculateEstimatedMonthlyEarnings(psychic.ratePerMin)
+        commissionSplit: {
+          psychic: psychicCommissionRate * 100 + '%',
+          platform: '75%'
+        }
       },
       recentActivity: {
         chatSessions: chatSessions.map(session => ({
@@ -613,7 +691,8 @@ const getPsychicDetails = async (req, res) => {
         paidTimers: paidTimers.map(timer => ({
           _id: timer._id,
           user: timer.user?.name || 'Unknown User',
-          amount: timer.totalAmountPaid || 0,
+          amount: timer.totalAmountPaid || 0, // Total paid by user
+          psychicEarnings: (timer.totalAmountPaid || 0) * psychicCommissionRate, // Psychic's 25%
           duration: timer.paidSession?.totalSeconds ? Math.round(timer.paidSession.totalSeconds / 60 * 100) / 100 : 0,
           status: timer.status,
           endedAt: timer.endedAt,
@@ -623,7 +702,8 @@ const getPsychicDetails = async (req, res) => {
         callSessions: callSessions.map(call => ({
           _id: call._id,
           user: call.userId?.name || 'Unknown User',
-          amount: call.totalCreditsUsed || 0,
+          amount: call.totalCreditsUsed || 0, // Total paid by user
+          psychicEarnings: (call.totalCreditsUsed || 0) * psychicCommissionRate, // Psychic's 25%
           duration: call.startTime && call.endTime ? 
             Math.round((new Date(call.endTime) - new Date(call.startTime)) / 60000) : 0,
           status: call.status,
@@ -638,7 +718,7 @@ const getPsychicDetails = async (req, res) => {
       timeline: {
         createdAt: psychic.createdAt,
         lastActive: getLastActiveTime(chatSessions, callSessions),
-        totalOnlineTime: Math.round((earningsData.totalTime / 3600 + callEarningsData.totalDuration / 60) * 100) / 100
+        totalOnlineTime: Math.round(totalHoursWorked * 100) / 100
       },
       metadata: {
         lastUpdated: new Date(),
@@ -647,7 +727,8 @@ const getPsychicDetails = async (req, res) => {
           paidTimersAnalyzed: totalPaidTimers,
           callSessionsAnalyzed: totalCallSessions,
           monthsAnalyzed: monthlyEarnings.length
-        }
+        },
+        commissionRate: psychicCommissionRate
       }
     };
 
@@ -667,11 +748,7 @@ const getPsychicDetails = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get all psychics with summary statistics
- * @route   GET /api/admin/chats/psychics
- * @access  Private/Admin
- */
+
 const getAllPsychics = async (req, res) => {
   try {
     
@@ -695,6 +772,8 @@ const getAllPsychics = async (req, res) => {
     const totalPsychics = await Psychic.countDocuments();
     console.log(`📈 Total psychics in DB: ${totalPsychics}`);
 
+    const psychicCommissionRate = 0.25; // 25% commission for psychics
+
     // Get earnings and session counts for each psychic in parallel
     const psychicsWithStats = await Promise.all(
       psychics.map(async (psychic) => {
@@ -710,7 +789,7 @@ const getAllPsychics = async (req, res) => {
           {
             $group: {
               _id: '$psychic',
-              totalEarnings: { $sum: '$totalAmountPaid' },
+              totalPaidByUsers: { $sum: '$totalAmountPaid' },
               totalSessions: { $sum: 1 },
               totalTime: { $sum: '$paidSession.totalSeconds' }
             }
@@ -729,7 +808,7 @@ const getAllPsychics = async (req, res) => {
           {
             $group: {
               _id: '$psychicId',
-              totalEarnings: { $sum: '$totalCreditsUsed' },
+              totalPaidByUsers: { $sum: '$totalCreditsUsed' },
               totalSessions: { $sum: 1 },
               totalDuration: { 
                 $sum: { 
@@ -744,13 +823,13 @@ const getAllPsychics = async (req, res) => {
         ]);
 
         const chatData = chatEarningsStats[0] || {
-          totalEarnings: 0,
+          totalPaidByUsers: 0,
           totalSessions: 0,
           totalTime: 0
         };
 
         const callData = callEarningsStats[0] || {
-          totalEarnings: 0,
+          totalPaidByUsers: 0,
           totalSessions: 0,
           totalDuration: 0
         };
@@ -767,32 +846,41 @@ const getAllPsychics = async (req, res) => {
           })
         ]);
 
-        const totalEarnings = chatData.totalEarnings + callData.totalEarnings;
+        const totalPaidByUsers = chatData.totalPaidByUsers + callData.totalPaidByUsers;
+        const psychicEarnings = totalPaidByUsers * psychicCommissionRate; // 25% to psychic
+        const platformEarnings = totalPaidByUsers * 0.75; // 75% to platform
+        
         const totalSessions = chatData.totalSessions + callData.totalSessions;
         const totalHours = (chatData.totalTime / 3600) + (callData.totalDuration / 60);
+        
+        const avgEarningsPerSession = totalSessions > 0 ? psychicEarnings / totalSessions : 0;
+        const earningsPerHour = totalHours > 0 ? psychicEarnings / totalHours : 0;
 
         return {
           ...psychic,
           statistics: {
-            totalEarnings: totalEarnings,
-            chatEarnings: chatData.totalEarnings,
-            callEarnings: callData.totalEarnings,
+            totalPaidByUsers: totalPaidByUsers, // Total users paid
+            psychicEarnings: psychicEarnings, // Psychic's 25% share
+            platformEarnings: platformEarnings, // Platform's 75% share
+            chatPaidByUsers: chatData.totalPaidByUsers,
+            callPaidByUsers: callData.totalPaidByUsers,
+            chatPsychicEarnings: chatData.totalPaidByUsers * psychicCommissionRate,
+            callPsychicEarnings: callData.totalPaidByUsers * psychicCommissionRate,
             totalSessions: totalSessions,
             chatSessions: chatData.totalSessions,
             callSessions: callData.totalSessions,
             totalHours: Math.round(totalHours * 100) / 100,
             activeChats: activeChats,
             activeCalls: activeCalls,
-            avgSessionValue: totalSessions > 0 ? 
-              Math.round((totalEarnings / totalSessions) * 100) / 100 : 0,
-            earningsPerHour: totalHours > 0 ? 
-              Math.round((totalEarnings / totalHours) * 100) / 100 : 0
+            avgEarningsPerSession: Math.round(avgEarningsPerSession * 100) / 100,
+            earningsPerHour: Math.round(earningsPerHour * 100) / 100,
+            commissionRate: psychicCommissionRate
           }
         };
       })
     );
 
-    // Calculate overall statistics including calls
+    // Calculate overall statistics including calls with split
     const [chatOverallStats, callOverallStats] = await Promise.all([
       ChatRequest.aggregate([
         {
@@ -804,7 +892,7 @@ const getAllPsychics = async (req, res) => {
         {
           $group: {
             _id: null,
-            totalEarnings: { $sum: '$totalAmountPaid' },
+            totalPaidByUsers: { $sum: '$totalAmountPaid' },
             totalSessions: { $sum: 1 },
             avgEarningsPerSession: { $avg: '$totalAmountPaid' }
           }
@@ -820,7 +908,7 @@ const getAllPsychics = async (req, res) => {
         {
           $group: {
             _id: null,
-            totalEarnings: { $sum: '$totalCreditsUsed' },
+            totalPaidByUsers: { $sum: '$totalCreditsUsed' },
             totalSessions: { $sum: 1 },
             avgEarningsPerSession: { $avg: '$totalCreditsUsed' }
           }
@@ -828,12 +916,14 @@ const getAllPsychics = async (req, res) => {
       ])
     ]);
 
-    const chatOverall = chatOverallStats[0] || { totalEarnings: 0, totalSessions: 0, avgEarningsPerSession: 0 };
-    const callOverall = callOverallStats[0] || { totalEarnings: 0, totalSessions: 0, avgEarningsPerSession: 0 };
+    const chatOverall = chatOverallStats[0] || { totalPaidByUsers: 0, totalSessions: 0, avgEarningsPerSession: 0 };
+    const callOverall = callOverallStats[0] || { totalPaidByUsers: 0, totalSessions: 0, avgEarningsPerSession: 0 };
 
-    const totalEarningsOverall = chatOverall.totalEarnings + callOverall.totalEarnings;
+    const totalPaidByUsersOverall = chatOverall.totalPaidByUsers + callOverall.totalPaidByUsers;
+    const totalPsychicEarningsOverall = totalPaidByUsersOverall * psychicCommissionRate;
+    const totalPlatformEarningsOverall = totalPaidByUsersOverall * 0.75;
     const totalSessionsOverall = chatOverall.totalSessions + callOverall.totalSessions;
-    const avgEarningsOverall = totalSessionsOverall > 0 ? totalEarningsOverall / totalSessionsOverall : 0;
+    const avgEarningsOverall = totalSessionsOverall > 0 ? totalPsychicEarningsOverall / totalSessionsOverall : 0;
 
     const response = {
       success: true,
@@ -847,13 +937,18 @@ const getAllPsychics = async (req, res) => {
         },
         summary: {
           totalPsychics: totalPsychics,
-          totalEarnings: totalEarningsOverall,
-          chatEarnings: chatOverall.totalEarnings,
-          callEarnings: callOverall.totalEarnings,
+          totalPaidByUsers: totalPaidByUsersOverall, // Total users paid across all psychics
+          totalPsychicEarnings: totalPsychicEarningsOverall, // Total psychic earnings (25% share)
+          totalPlatformEarnings: totalPlatformEarningsOverall, // Total platform earnings (75% share)
+          chatPaidByUsers: chatOverall.totalPaidByUsers,
+          callPaidByUsers: callOverall.totalPaidByUsers,
+          chatPsychicEarnings: chatOverall.totalPaidByUsers * psychicCommissionRate,
+          callPsychicEarnings: callOverall.totalPaidByUsers * psychicCommissionRate,
           totalSessions: totalSessionsOverall,
           chatSessions: chatOverall.totalSessions,
           callSessions: callOverall.totalSessions,
-          avgEarningsPerSession: avgEarningsOverall
+          avgEarningsPerSession: Math.round(avgEarningsOverall * 100) / 100,
+          commissionRate: psychicCommissionRate
         }
       },
       message: 'Psychics list retrieved successfully'
@@ -873,12 +968,11 @@ const getAllPsychics = async (req, res) => {
   }
 };
 
-/**
- * @desc    Get chat by ID (existing function, updated with call info)
- */
+
 const getChatById = async (req, res) => {
   try {
     const { id } = req.params;
+    const COMMISSION_RATE = 0.25; // 25% to psychic
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
@@ -1098,11 +1192,13 @@ const getChatById = async (req, res) => {
       };
     });
 
-    // 9. Prepare chat request/payment info
+    // 9. Prepare chat request/payment info with split
     const paymentInfo = chatRequest ? {
       _id: chatRequest._id,
       status: chatRequest.status,
-      totalAmountPaid: chatRequest.totalAmountPaid || 0,
+      totalPaidByUser: chatRequest.totalAmountPaid || 0, // Total user paid
+      psychicEarnings: (chatRequest.totalAmountPaid || 0) * COMMISSION_RATE, // Psychic's 25%
+      platformEarnings: (chatRequest.totalAmountPaid || 0) * 0.75, // Platform's 75%
       remainingBalance: chatRequest.remainingBalance || 0,
       ratePerMin: chatRequest.ratePerMin || participants.psychic.ratePerMin,
       initialBalance: chatRequest.initialBalance || 0,
@@ -1118,7 +1214,7 @@ const getChatById = async (req, res) => {
       deductions: chatRequest.deductions || []
     } : null;
 
-    // 10. Prepare call session info if exists
+    // 10. Prepare call session info if exists with split
     const callInfo = callSession ? {
       _id: callSession._id,
       roomName: callSession.roomName,
@@ -1126,7 +1222,9 @@ const getChatById = async (req, res) => {
       startTime: callSession.startTime,
       endTime: callSession.endTime,
       creditsUsed: callSession.totalCreditsUsed || 0,
-      revenue: callSession.totalCreditsUsed || 0, // 1 credit = $1
+      totalPaidByUser: callSession.totalCreditsUsed || 0, // 1 credit = $1
+      psychicEarnings: (callSession.totalCreditsUsed || 0) * COMMISSION_RATE,
+      platformEarnings: (callSession.totalCreditsUsed || 0) * 0.75,
       duration: callSession.startTime && callSession.endTime ? 
         Math.round((new Date(callSession.endTime) - new Date(callSession.startTime)) / 60000) : 0, // minutes
       isFreeSession: callSession.isFreeSession,
@@ -1187,7 +1285,12 @@ const getChatById = async (req, res) => {
         isActive: chatSession.status === 'active',
         chatStarted: chatSession.startedAt ? true : false,
         chatEnded: chatSession.endedAt ? true : false,
-        hasCall: !!callInfo
+        hasCall: !!callInfo,
+        splitInfo: {
+          psychicRate: COMMISSION_RATE * 100 + '%',
+          platformRate: '75%',
+          description: 'Psychic receives 25% of payments, platform retains 75%'
+        }
       }
     };
 
@@ -1209,11 +1312,7 @@ const getChatById = async (req, res) => {
   }
 };
 
-// ============= HELPER FUNCTIONS =============
 
-/**
- * Helper function to format user name properly
- */
 const formatUserName = (user) => {
   if (!user) return 'Unknown User';
   
@@ -1228,9 +1327,6 @@ const formatUserName = (user) => {
   return 'Unknown User';
 };
 
-/**
- * Helper function to calculate average response time
- */
 const calculateAverageResponseTime = (messages) => {
   if (messages.length < 2) return 0;
   
@@ -1253,9 +1349,6 @@ const calculateAverageResponseTime = (messages) => {
     Math.round(totalResponseTime / responseCount / 1000) : 0; // in seconds
 };
 
-/**
- * Helper function to format duration
- */
 const formatDuration = (seconds) => {
   if (!seconds) return '0 seconds';
   
@@ -1271,17 +1364,17 @@ const formatDuration = (seconds) => {
   return parts.join(', ');
 };
 
-/**
- * Helper function to get month name
- */
+
+
+
+
+
 const getMonthName = (monthNumber) => {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return months[monthNumber - 1] || 'Unknown';
 };
 
-/**
- * Helper function to calculate earnings per hour
- */
+
 const calculateEarningsPerHour = (chatData, callData) => {
   const totalHours = (chatData.totalTime / 3600) + (callData.totalDuration / 60);
   const totalEarnings = chatData.totalEarnings + callData.totalEarnings;
@@ -1290,9 +1383,7 @@ const calculateEarningsPerHour = (chatData, callData) => {
   return Math.round((totalEarnings / totalHours) * 100) / 100;
 };
 
-/**
- * Helper function to get last active time
- */
+
 const getLastActiveTime = (chatSessions, callSessions) => {
   const allActivities = [
     ...chatSessions.map(s => s.lastMessageAt || s.updatedAt),
@@ -1303,9 +1394,7 @@ const getLastActiveTime = (chatSessions, callSessions) => {
   return new Date(Math.max(...allActivities.map(d => new Date(d))));
 };
 
-/**
- * Helper function to calculate estimated monthly earnings
- */
+
 const calculateEstimatedMonthlyEarnings = (chatRatePerMin) => {
   // Estimate: 40 min/session, 20 sessions/week, 4 weeks/month for chats
   const chatEstimate = chatRatePerMin * 40 * 20 * 4;
@@ -1315,11 +1404,7 @@ const calculateEstimatedMonthlyEarnings = (chatRatePerMin) => {
   return chatEstimate + callEstimate;
 };
 
-// ============= LEGACY ENDPOINTS =============
 
-/**
- * @desc    Legacy endpoint for user chats (no longer available)
- */
 const getUserChats = (req, res) => res.status(200).json({ 
   success: true, 
   message: 'This endpoint is no longer available' 

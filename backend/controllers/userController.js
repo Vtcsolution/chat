@@ -339,19 +339,105 @@ const forgetPassword = async (req, res) => {
     // Create reset link
     const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/reset-password/${token}`;
 
-    // Create reusable transporter object using Mailtrap for testing
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.strato.com',
-      port: process.env.SMTP_PORT || 465,
-      auth: {
-        user: process.env.SMTP_USER || 'info@spiritueelchatten.com',
-        pass: process.env.SMTP_PASS || 'Kikkerss15!'
-      }
+    // Log SMTP config for debugging (without password)
+    console.log('SMTP Configuration:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE,
+      user: process.env.SMTP_USER,
+      from: process.env.EMAIL_FROM
     });
+
+    // Create transporter with more options
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: parseInt(process.env.SMTP_PORT) || 465,
+      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false, // Only for testing - helps with self-signed certificates
+        ciphers: 'SSLv3'
+      },
+      debug: true, // Enable debug logs
+      logger: true // Log information to console
+    });
+
+    // Verify connection configuration
+    try {
+      await transporter.verify();
+      console.log('SMTP server connection verified successfully');
+    } catch (verifyError) {
+      console.error('SMTP verification failed:', verifyError);
+      
+      // Try alternative port if first attempt fails
+      if (process.env.SMTP_PORT === '465') {
+        console.log('Trying alternative port 587...');
+        const altTransporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: 587,
+          secure: false,
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS
+          },
+          tls: {
+            rejectUnauthorized: false
+          }
+        });
+        
+        await altTransporter.verify();
+        console.log('Alternative SMTP connection verified on port 587');
+        
+        // Send email using alternative transporter
+        const mailOptions = {
+          from: process.env.EMAIL_FROM || 'Hecate Voyance <Info@hecatevoyance.fr>',
+          to: email,
+          subject: 'Password Reset Request',
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #333;">Password Reset</h2>
+              <p>Hi ${user.username || 'there'},</p>
+              <p>We received a request to reset your password. Click the button below to create a new one.</p>
+              <p>If you didn't request this, you can safely ignore this email.</p>
+              <a href="${resetLink}" 
+                 style="display: inline-block; padding: 10px 20px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 4px; margin: 20px 0;">
+                Reset Password
+              </a>
+              <p style="color: #666; font-size: 0.9em;">
+                This link will expire in 1 hour.
+              </p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 20px 0;">
+              <p>Or copy and paste this link into your browser:</p>
+              <p style="word-break: break-all;">${resetLink}</p>
+            </div>
+          `,
+          text: `Hi ${user.username || 'there'},
+
+We received a request to reset your password. Use this link to create a new one:
+${resetLink}
+
+If you didn't request this, you can safely ignore this email.
+
+This link will expire in 1 hour.`
+        };
+        
+        const info = await altTransporter.sendMail(mailOptions);
+        console.log('Email sent successfully via alternative port:', info.messageId);
+        
+        return res.status(200).json({ 
+          message: 'Password reset link has been sent if the email exists in our system'
+        });
+      }
+      
+      throw verifyError;
+    }
 
     // Email content
     const mailOptions = {
-      from: 'Spiritueel Chatten <info@spiritueelchatten.com>',
+      from: process.env.EMAIL_FROM || 'Hecate Voyance <Info@hecatevoyance.fr>',
       to: email,
       subject: 'Password Reset Request',
       html: `
@@ -383,7 +469,8 @@ This link will expire in 1 hour.`
     };
 
     // Send email
-    await transporter.sendMail(mailOptions);
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully:', info.messageId);
     
     res.status(200).json({ 
       message: 'Password reset link has been sent if the email exists in our system'
@@ -391,6 +478,14 @@ This link will expire in 1 hour.`
 
   } catch (error) {
     console.error('Forgot password error:', error);
+    
+    // More specific error messages
+    if (error.code === 'EAUTH') {
+      return res.status(500).json({ 
+        message: 'Email authentication failed. Please check your email credentials or contact support.'
+      });
+    }
+    
     res.status(500).json({ 
       message: 'An error occurred while processing your request'
     });

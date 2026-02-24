@@ -33,7 +33,8 @@ import {
   FaFire,
   FaStar,
   FaPhone,
-  FaCommentDots
+  FaCommentDots,
+  FaExchangeAlt
 } from 'react-icons/fa';
 
 // Color scheme
@@ -52,7 +53,7 @@ const colors = {
 };
 
 // Stat Card Component
-const StatCard = ({ title, value, icon: Icon, color, change = null, loading = false, onClick = null, subtitle = null }) => (
+const StatCard = ({ title, value, icon: Icon, color, change = null, loading = false, onClick = null, subtitle = null, tooltip = null }) => (
   <div 
     className={`bg-white rounded-xl shadow-md p-6 hover:shadow-lg transition-all duration-300 cursor-pointer border ${
       loading ? 'animate-pulse' : 'border-gray-100'
@@ -65,7 +66,12 @@ const StatCard = ({ title, value, icon: Icon, color, change = null, loading = fa
   >
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-sm font-medium" style={{ color: colors.primary + '80' }}>{title}</p>
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium" style={{ color: colors.primary + '80' }}>{title}</p>
+          {tooltip && (
+            <FaInfoCircle className="text-xs" style={{ color: colors.primary + '40' }} title={tooltip} />
+          )}
+        </div>
         <h3 className="text-3xl font-bold mt-2" style={{ color: colors.primary }}>
           {loading ? "..." : value}
         </h3>
@@ -96,7 +102,7 @@ const StatCard = ({ title, value, icon: Icon, color, change = null, loading = fa
   </div>
 );
 
-// Period Card Component
+// Period Card Component - UPDATED to show psychic earnings
 const PeriodCard = ({ period, data, loading = false, active = false, onClick }) => {
   const getPeriodIcon = (period) => {
     switch (period) {
@@ -149,26 +155,31 @@ const PeriodCard = ({ period, data, loading = false, active = false, onClick }) 
       </div>
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <span className="text-gray-600">Total Revenue</span>
+          <span className="text-gray-600">Your Earnings (25%)</span>
           <span className="font-bold text-lg"
             style={{ color: colors.success }}>
-            {loading ? "..." : formatCurrency(data?.earnings || 0)}
+            {loading ? "..." : formatCurrency(data?.psychicEarnings || 0)}
           </span>
+        </div>
+        
+        <div className="flex justify-between items-center pl-2 text-xs" style={{ color: colors.primary + '60' }}>
+          <span>Total Paid by Users</span>
+          <span>{loading ? "..." : formatCurrency(data?.totalPaid || 0)}</span>
         </div>
         
         {/* Chat Earnings */}
         <div className="flex justify-between items-center pl-2 border-l-2" style={{ borderColor: colors.chat }}>
-          <span className="text-sm text-gray-500">Chat Earnings</span>
+          <span className="text-sm text-gray-500">Chat Earnings (your share)</span>
           <span className="font-medium" style={{ color: colors.chat }}>
-            {loading ? "..." : formatCurrency(data?.chatEarnings || 0)}
+            {loading ? "..." : formatCurrency((data?.chatEarnings || 0) * 0.25)}
           </span>
         </div>
         
         {/* Call Earnings */}
         <div className="flex justify-between items-center pl-2 border-l-2" style={{ borderColor: colors.call }}>
-          <span className="text-sm text-gray-500">Call Earnings</span>
+          <span className="text-sm text-gray-500">Call Earnings (your share)</span>
           <span className="font-medium" style={{ color: colors.call }}>
-            {loading ? "..." : formatCurrency(data?.callEarnings || 0)}
+            {loading ? "..." : formatCurrency((data?.callEarnings || 0) * 0.25)}
           </span>
         </div>
         
@@ -205,7 +216,7 @@ const PeriodCard = ({ period, data, loading = false, active = false, onClick }) 
   );
 };
 
-// User Earnings Card Component
+// User Earnings Card Component - UPDATED to show psychic earnings
 const UserEarningsCard = ({ user, rank, onViewDetails }) => (
   <div className="bg-white rounded-xl shadow-md p-5 hover:shadow-xl transition-all duration-300 hover:scale-[1.02] border border-gray-100 group">
     <div className="flex items-center justify-between mb-4">
@@ -225,8 +236,7 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
         </div>
         <div className="min-w-0 flex-1">
           <p className="font-bold text-lg truncate" style={{ color: colors.primary }}>
-            {user.user?.username ? `${user.user.username} ${user.user.lastName || ''}`.trim() : 
-             user.userName || "Anonymous User"}
+            {user.user?.username || user.userName || "Anonymous User"}
           </p>
           <p className="text-sm truncate" style={{ color: colors.primary + '70' }}>
             {user.user?.email || user.userEmail || "No email"}
@@ -235,7 +245,10 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
       </div>
       <div className="text-right">
         <p className="text-xl font-bold" style={{ color: colors.success }}>
-          {formatCurrency(user.totalEarnings)}
+          {formatCurrency(user.psychicEarnings || user.totalEarnings || 0)}
+        </p>
+        <p className="text-xs mt-1" style={{ color: colors.primary + '50' }}>
+          from {formatCurrency(user.totalPaid || 0)} total
         </p>
         <p className="text-sm mt-1" style={{ color: colors.primary + '60' }}>
           {user.totalSessions || 0} sessions
@@ -243,24 +256,24 @@ const UserEarningsCard = ({ user, rank, onViewDetails }) => (
       </div>
     </div>
     
-    {/* Chat/Call Breakdown */}
+    {/* Chat/Call Breakdown - UPDATED to show psychic share */}
     <div className="grid grid-cols-2 gap-2 mb-3">
       <div className="text-center p-2 rounded-lg" style={{ backgroundColor: colors.chat + '10' }}>
-        <p className="text-xs mb-1" style={{ color: colors.chat }}>Chat</p>
+        <p className="text-xs mb-1" style={{ color: colors.chat }}>Chat (your share)</p>
         <p className="font-bold text-sm" style={{ color: colors.chat }}>
           {formatCurrency(user.chatEarnings || 0)}
         </p>
         <p className="text-xs" style={{ color: colors.primary + '60' }}>
-          {user.chatSessions || 0} sessions
+          from {formatCurrency(user.chatPaid || 0)} total • {user.chatSessions || 0} sess
         </p>
       </div>
       <div className="text-center p-2 rounded-lg" style={{ backgroundColor: colors.call + '10' }}>
-        <p className="text-xs mb-1" style={{ color: colors.call }}>Call</p>
+        <p className="text-xs mb-1" style={{ color: colors.call }}>Call (your share)</p>
         <p className="font-bold text-sm" style={{ color: colors.call }}>
           {formatCurrency(user.callEarnings || 0)}
         </p>
         <p className="text-xs" style={{ color: colors.primary + '60' }}>
-          {user.callSessions || 0} sessions
+          from {formatCurrency(user.callPaid || 0)} total • {user.callSessions || 0} sess
         </p>
       </div>
     </div>
@@ -304,11 +317,76 @@ const FilterComponent = ({ filters, onFilterChange, onReset }) => {
   const [showFilters, setShowFilters] = useState(false);
 
   return (
-    <div 
-     >
-     
-
-     
+    <div className="mb-6">
+      <button
+        onClick={() => setShowFilters(!showFilters)}
+        className="px-4 py-2 rounded-lg font-medium flex items-center gap-2 mb-3"
+        style={{
+          backgroundColor: colors.primary + '10',
+          color: colors.primary
+        }}
+      >
+        <FaFilter />
+        {showFilters ? 'Hide Filters' : 'Show Filters'}
+      </button>
+      
+      {showFilters && (
+        <div className="bg-white rounded-xl shadow-md p-6 border" style={{ borderColor: colors.primary + '20' }}>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.primary }}>
+                Search User
+              </label>
+              <input
+                type="text"
+                value={filters.searchQuery || ''}
+                onChange={(e) => onFilterChange('searchQuery', e.target.value)}
+                placeholder="Name or email..."
+                className="w-full px-3 py-2 rounded-lg border"
+                style={{ borderColor: colors.primary + '30' }}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.primary }}>
+                Min Amount
+              </label>
+              <input
+                type="number"
+                value={filters.minAmount || ''}
+                onChange={(e) => onFilterChange('minAmount', e.target.value)}
+                placeholder="Min earnings"
+                className="w-full px-3 py-2 rounded-lg border"
+                style={{ borderColor: colors.primary + '30' }}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-2" style={{ color: colors.primary }}>
+                Min Sessions
+              </label>
+              <input
+                type="number"
+                value={filters.minSessions || ''}
+                onChange={(e) => onFilterChange('minSessions', e.target.value)}
+                placeholder="Min sessions"
+                className="w-full px-3 py-2 rounded-lg border"
+                style={{ borderColor: colors.primary + '30' }}
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={onReset}
+                className="px-4 py-2 rounded-lg font-medium"
+                style={{
+                  backgroundColor: colors.primary + '10',
+                  color: colors.primary
+                }}
+              >
+                Reset Filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -361,10 +439,11 @@ const PsychicEarnings = () => {
     minSessions: '',
     searchQuery: ''
   });
-  const [sortConfig, setSortConfig] = useState({ key: 'totalEarnings', direction: 'desc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'psychicEarnings', direction: 'desc' });
   const [showUserModal, setShowUserModal] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [debugInfo, setDebugInfo] = useState(null);
+  const [showSplitInfo, setShowSplitInfo] = useState(true);
 
   // Create API instance
   const api = useRef(
@@ -416,12 +495,6 @@ const PsychicEarnings = () => {
       
       console.log('API Response:', response.data);
       setDebugInfo(response.data);
-      
-      // Check if call data exists
-      if (response.data?.data?.summary) {
-        console.log('Call Sessions:', response.data.data.summary.allTime?.callSessions);
-        console.log('Call Earnings:', response.data.data.summary.allTime?.callEarnings);
-      }
       
       setEarningsData(response.data);
       return { success: true, data: response.data };
@@ -521,12 +594,13 @@ const PsychicEarnings = () => {
       const data = earningsData?.data;
       
       const csvData = [
-        ['Date', 'User', 'Type', 'Amount', 'Duration', 'Sessions'],
+        ['Date', 'User', 'Type', 'Your Earnings (25%)', 'Total Paid', 'Duration', 'Sessions'],
         ...(data?.recentSessions || []).map(session => [
           new Date(session.endedAt || session.endTime).toLocaleDateString(),
-          session.user?.firstName || 'Unknown',
+          session.user?.username || 'Unknown',
           session.type || 'session',
           session.amount || 0,
+          session.totalAmount || 0,
           `${session.durationMinutes || 0} min`,
           1
         ])
@@ -569,15 +643,15 @@ const PsychicEarnings = () => {
     
     switch (activePeriod) {
       case 'today': 
-        return summary.daily || summary.today || { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 };
+        return summary.daily || summary.today || { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 };
       case 'week': 
-        return summary.weekly || summary.week || { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 };
+        return summary.weekly || summary.week || { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 };
       case 'month': 
-        return summary.monthly || summary.month || { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 };
+        return summary.monthly || summary.month || { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 };
       case 'year': 
-        return summary.allTime || summary.year || summary || { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 };
+        return summary.allTime || summary.year || summary || { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 };
       default: 
-        return summary.monthly || { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 };
+        return summary.monthly || { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 };
     }
   };
 
@@ -588,7 +662,7 @@ const PsychicEarnings = () => {
     let users = [...earningsData.data.userBreakdown];
     
     if (filters.minAmount) {
-      users = users.filter(user => user.totalEarnings >= parseFloat(filters.minAmount));
+      users = users.filter(user => (user.psychicEarnings || 0) >= parseFloat(filters.minAmount));
     }
     
     if (filters.minSessions) {
@@ -598,8 +672,7 @@ const PsychicEarnings = () => {
     if (filters.searchQuery) {
       const query = filters.searchQuery.toLowerCase();
       users = users.filter(user => 
-        user.user?.firstName?.toLowerCase().includes(query) ||
-        user.user?.lastName?.toLowerCase().includes(query) ||
+        user.user?.username?.toLowerCase().includes(query) ||
         user.user?.email?.toLowerCase().includes(query) ||
         user.userName?.toLowerCase().includes(query)
       );
@@ -620,10 +693,10 @@ const PsychicEarnings = () => {
 
   // Get summary data with fallbacks
   const summary = earningsData?.data?.summary || {
-    daily: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-    weekly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-    monthly: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0 },
-    allTime: { earnings: 0, sessions: 0, users: 0, timeMinutes: 0, totalUsers: 0, chatEarnings: 0, callEarnings: 0, chatSessions: 0, callSessions: 0 }
+    daily: { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 },
+    weekly: { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 },
+    monthly: { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0 },
+    allTime: { psychicEarnings: 0, totalPaid: 0, sessions: 0, users: 0, timeMinutes: 0, totalUsers: 0, chatEarnings: 0, callEarnings: 0, chatSessions: 0, callSessions: 0 }
   };
 
   // Active period data
@@ -683,6 +756,7 @@ const PsychicEarnings = () => {
           </div>
         )}
 
+        {/* Split Info Banner */}
        
       </div>
 
@@ -693,7 +767,7 @@ const PsychicEarnings = () => {
         </div>
       ) : (
         <>
-          {/* Session Type Summary */}
+          {/* Session Type Summary - UPDATED to show psychic earnings */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
             <div className="bg-white rounded-xl shadow-md p-6 border" style={{ borderColor: colors.chat + '30' }}>
               <div className="flex items-center gap-3 mb-4">
@@ -704,9 +778,12 @@ const PsychicEarnings = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Earnings</p>
+                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Your Earnings</p>
                   <p className="text-2xl font-bold" style={{ color: colors.chat }}>
-                    {formatCurrency(summary.allTime?.chatEarnings || 0)}
+                    {formatCurrency((summary.allTime?.chatEarnings || 0) * 0.25)}
+                  </p>
+                  <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                    from {formatCurrency(summary.allTime?.chatEarnings || 0)} total
                   </p>
                 </div>
                 <div>
@@ -727,9 +804,12 @@ const PsychicEarnings = () => {
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Earnings</p>
+                  <p className="text-sm" style={{ color: colors.primary + '70' }}>Your Earnings</p>
                   <p className="text-2xl font-bold" style={{ color: colors.call }}>
-                    {formatCurrency(summary.allTime?.callEarnings || 0)}
+                    {formatCurrency((summary.allTime?.callEarnings || 0) * 0.25)}
+                  </p>
+                  <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                    from {formatCurrency(summary.allTime?.callEarnings || 0)} total
                   </p>
                 </div>
                 <div>
@@ -742,16 +822,17 @@ const PsychicEarnings = () => {
             </div>
           </div>
 
-          {/* Quick Stats */}
+          {/* Quick Stats - UPDATED to show psychic earnings */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <StatCard
-              title="Total Earnings"
-              value={formatCurrency(summary.allTime?.earnings || 0)}
+              title="Your Total Earnings"
+              value={formatCurrency(summary.allTime?.psychicEarnings || 0)}
               icon={FaDollarSign}
               color={colors.success}
-              change={calculateGrowth(summary.monthly?.earnings, summary.weekly?.earnings)}
+              change={calculateGrowth(summary.monthly?.psychicEarnings, summary.weekly?.psychicEarnings)}
               loading={loading}
-              subtitle={`Chat: ${formatCurrency(summary.allTime?.chatEarnings || 0)} • Call: ${formatCurrency(summary.allTime?.callEarnings || 0)}`}
+              subtitle={`25% of ${formatCurrency(summary.allTime?.totalPaid || 0)} total`}
+              tooltip="This is your 25% share of all session payments"
               onClick={() => handlePeriodChange('year')}
             />
             <StatCard
@@ -781,24 +862,30 @@ const PsychicEarnings = () => {
             />
           </div>
 
-          {/* Period Selection */}
-          {/* <div className="mb-8">
+          {/* Period Selection - UPDATED to show psychic earnings */}
+          <div className="mb-8">
             <h2 className="text-xl font-bold mb-4" style={{ color: colors.primary }}>Earnings Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {['today', 'week', 'month', 'year'].map((period) => (
-                <PeriodCard
-                  key={period}
-                  period={period}
-                  data={summary[period === 'today' ? 'daily' : 
-                               period === 'week' ? 'weekly' : 
-                               period === 'month' ? 'monthly' : 'allTime']}
-                  loading={loading}
-                  active={activePeriod === period}
-                  onClick={() => handlePeriodChange(period)}
-                />
-              ))}
+              {['today', 'week', 'month', 'year'].map((period) => {
+                let periodData;
+                if (period === 'today') periodData = summary.daily;
+                else if (period === 'week') periodData = summary.weekly;
+                else if (period === 'month') periodData = summary.monthly;
+                else periodData = summary.allTime;
+                
+                return (
+                  <PeriodCard
+                    key={period}
+                    period={period}
+                    data={periodData}
+                    loading={loading}
+                    active={activePeriod === period}
+                    onClick={() => handlePeriodChange(period)}
+                  />
+                );
+              })}
             </div>
-          </div> */}
+          </div>
 
           {/* Filters */}
           <FilterComponent 
@@ -807,7 +894,7 @@ const PsychicEarnings = () => {
             onReset={handleResetFilters}
           />
 
-          {/* User Earnings Table */}
+          {/* User Earnings Table - UPDATED headers and data */}
           <div className="rounded-xl shadow-md overflow-hidden mb-8 border"
             style={{ 
               backgroundColor: 'white',
@@ -829,28 +916,33 @@ const PsychicEarnings = () => {
               <table className="min-w-full divide-y" style={{ borderColor: colors.primary + '20' }}>
                 <thead style={{ backgroundColor: colors.primary + '05' }}>
                   <tr>
-                    {['rank', 'userName', 'totalEarnings', 'chatEarnings', 'callEarnings', 'totalSessions', 'totalTimeMinutes', 'avgEarningsPerSession', 'actions'].map((key) => (
+                    {[
+                      { key: 'rank', label: 'Rank' },
+                      { key: 'userName', label: 'User' },
+                      { key: 'psychicEarnings', label: 'Your Earnings' },
+                      { key: 'totalPaid', label: 'Total Paid' },
+                      { key: 'chatEarnings', label: 'Chat (Your Share)' },
+                      { key: 'callEarnings', label: 'Call (Your Share)' },
+                      { key: 'totalSessions', label: 'Sessions' },
+                      { key: 'totalTimeMinutes', label: 'Time' },
+                      { key: 'avgEarningsPerSession', label: 'Avg/Session' },
+                      { key: 'actions', label: 'Actions' }
+                    ].map(({ key, label }) => (
                       <th key={key} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider"
                         style={{ color: colors.primary + '70' }}>
-                        <button 
-                          onClick={() => handleSort(key)}
-                          className="flex items-center space-x-1 hover:opacity-80"
-                        >
-                          <span>{
-                            key === 'rank' ? 'Rank' :
-                            key === 'userName' ? 'User' :
-                            key === 'totalEarnings' ? 'Total' :
-                            key === 'chatEarnings' ? 'Chat' :
-                            key === 'callEarnings' ? 'Call' :
-                            key === 'totalSessions' ? 'Sessions' :
-                            key === 'totalTimeMinutes' ? 'Time' :
-                            key === 'avgEarningsPerSession' ? 'Avg/Session' :
-                            'Actions'
-                          }</span>
-                          {sortConfig.key === key && (
-                            sortConfig.direction === 'asc' ? <FaSortUp /> : <FaSortDown />
-                          )}
-                        </button>
+                        {key !== 'actions' && key !== 'rank' ? (
+                          <button 
+                            onClick={() => handleSort(key)}
+                            className="flex items-center space-x-1 hover:opacity-80"
+                          >
+                            <span>{label}</span>
+                            {sortConfig.key === key && (
+                              sortConfig.direction === 'asc' ? <FaSortUp /> : <FaSortDown />
+                            )}
+                          </button>
+                        ) : (
+                          <span>{label}</span>
+                        )}
                       </th>
                     ))}
                   </tr>
@@ -879,7 +971,7 @@ const PsychicEarnings = () => {
                             </div>
                             <div className="ml-4">
                               <div className="font-bold" style={{ color: colors.primary }}>
-                                {user.user?.username ? ``.trim() : 'Anonymous User'}
+                                {user.user?.username || 'Anonymous User'}
                               </div>
                               <div className="text-sm" style={{ color: colors.primary + '70' }}>
                                 {user.user?.email || 'No email'}
@@ -889,7 +981,15 @@ const PsychicEarnings = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-lg font-bold" style={{ color: colors.success }}>
-                            {formatCurrency(user.totalEarnings)}
+                            {formatCurrency(user.psychicEarnings || 0)}
+                          </div>
+                          <div className="text-xs" style={{ color: colors.primary + '50' }}>
+                            25% share
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="font-medium" style={{ color: colors.primary }}>
+                            {formatCurrency(user.totalPaid || 0)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -897,7 +997,7 @@ const PsychicEarnings = () => {
                             {formatCurrency(user.chatEarnings || 0)}
                           </div>
                           <div className="text-xs" style={{ color: colors.primary + '60' }}>
-                            {user.chatSessions || 0} sessions
+                            {user.chatSessions || 0} sess
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -905,7 +1005,7 @@ const PsychicEarnings = () => {
                             {formatCurrency(user.callEarnings || 0)}
                           </div>
                           <div className="text-xs" style={{ color: colors.primary + '60' }}>
-                            {user.callSessions || 0} sessions
+                            {user.callSessions || 0} sess
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -939,7 +1039,7 @@ const PsychicEarnings = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="9" className="px-6 py-8 text-center">
+                      <td colSpan="10" className="px-6 py-8 text-center">
                         <FaUserTie className="text-4xl mx-auto mb-3" style={{ color: colors.primary + '30' }} />
                         <p style={{ color: colors.primary + '70' }}>No users found</p>
                         <p className="text-sm mt-1" style={{ color: colors.primary + '50' }}>Try adjusting your filters</p>
@@ -952,94 +1052,109 @@ const PsychicEarnings = () => {
           </div>
 
           {/* Top Users Grid */}
-          <div className="mb-8">
-            <h2 className="text-xl font-bold mb-4" style={{ color: colors.primary }}>
-              <FaCrown className="inline mr-2" style={{ color: colors.secondary }} />
-              Top Earning Users
-            </h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredUsers.slice(0, 6).map((user, index) => (
-                <UserEarningsCard
-                  key={user.user?._id || index}
-                  user={user}
-                  rank={index + 1}
-                  onViewDetails={(userId) => fetchUserEarnings(userId)}
-                />
-              ))}
+         
+
+          {/* Recent Sessions - UPDATED to show psychic earnings */}
+         {/* Recent Sessions - FIXED to show earnings correctly */}
+{earningsData?.data?.recentSessions?.length > 0 && (
+  <div className="rounded-xl shadow-md p-6 mb-8 border"
+    style={{ 
+      backgroundColor: 'white',
+      borderColor: colors.primary + '20'
+    }}>
+    <div className="flex justify-between items-center mb-6">
+      <h2 className="text-xl font-bold" style={{ color: colors.primary }}>
+        <FaHistory className="inline mr-2" style={{ color: colors.secondary }} />
+        Recent Sessions
+      </h2>
+    </div>
+    <div className="space-y-4">
+      {earningsData.data.recentSessions.slice(0, 5).map((session, index) => {
+        const sessionColor = session.type === 'chat' ? colors.chat : colors.call;
+        const SessionIcon = session.type === 'chat' ? FaCommentDots : FaPhone;
+        
+        // Calculate earnings based on session type
+        let psychicEarnings = 0;
+        let totalAmount = 0;
+        
+        if (session.type === 'chat') {
+          // For chat sessions, use amount or calculate from totalAmount
+          psychicEarnings = session.amount || (session.totalAmount ? session.totalAmount * 0.25 : 0);
+          totalAmount = session.totalAmount || (session.amount ? session.amount * 4 : 0);
+        } else {
+          // For call sessions, use amount or calculate from totalAmount
+          psychicEarnings = session.amount || (session.totalAmount ? session.totalAmount * 0.25 : 0);
+          totalAmount = session.totalAmount || (session.amount ? session.amount * 4 : 0);
+        }
+        
+        // If we have creditsUsed or totalCreditsUsed, use those
+        if (session.creditsUsed) {
+          psychicEarnings = session.creditsUsed * 0.25;
+          totalAmount = session.creditsUsed;
+        } else if (session.totalCreditsUsed) {
+          psychicEarnings = session.totalCreditsUsed * 0.25;
+          totalAmount = session.totalCreditsUsed;
+        }
+        
+        // Ensure we have valid numbers
+        psychicEarnings = psychicEarnings || 0;
+        totalAmount = totalAmount || 0;
+        
+        return (
+          <div key={session._id || index} 
+            className="pl-4 py-3 rounded-r-lg hover:bg-gray-50 transition-colors"
+            style={{ 
+              borderLeft: `4px solid ${sessionColor}`,
+              backgroundColor: index % 2 === 0 ? colors.primary + '03' : 'transparent'
+            }}>
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-full" style={{ backgroundColor: sessionColor + '20' }}>
+                  <SessionIcon className="text-sm" style={{ color: sessionColor }} />
+                </div>
+                <div>
+                  <p className="font-bold" style={{ color: colors.primary }}>
+                    {session.user?.username || session.user?.firstName || 'User'}
+                  </p>
+                  <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                    {session.type === 'chat' ? 'Chat Session' : 'Call Session'} • {formatDate(session.endedAt || session.endTime)}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-bold text-lg" style={{ color: colors.success }}>
+                  {formatCurrency(psychicEarnings)}
+                </p>
+                <p className="text-xs" style={{ color: colors.primary + '50' }}>
+                  from {formatCurrency(totalAmount)} total
+                </p>
+                <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                  {session.durationMinutes || 0} min
+                </p>
+              </div>
             </div>
           </div>
+        );
+      })}
+    </div>
+  </div>
+)}
 
-          {/* Recent Sessions */}
-          {earningsData?.data?.recentSessions?.length > 0 && (
-            <div className="rounded-xl shadow-md p-6 mb-8 border"
-              style={{ 
-                backgroundColor: 'white',
-                borderColor: colors.primary + '20'
-              }}>
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-bold" style={{ color: colors.primary }}>
-                  <FaHistory className="inline mr-2" style={{ color: colors.secondary }} />
-                  Recent Sessions
-                </h2>
-              </div>
-              <div className="space-y-4">
-                {earningsData.data.recentSessions.slice(0, 5).map((session, index) => {
-                  const sessionColor = session.type === 'chat' ? colors.chat : colors.call;
-                  const SessionIcon = session.type === 'chat' ? FaCommentDots : FaPhone;
-                  
-                  return (
-                    <div key={session._id || index} 
-                      className="pl-4 py-3 rounded-r-lg hover:bg-gray-50 transition-colors"
-                      style={{ 
-                        borderLeft: `4px solid ${sessionColor}`,
-                        backgroundColor: index % 2 === 0 ? colors.primary + '03' : 'transparent'
-                      }}>
-                      <div className="flex justify-between items-center">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-full" style={{ backgroundColor: sessionColor + '20' }}>
-                            <SessionIcon className="text-sm" style={{ color: sessionColor }} />
-                          </div>
-                          <div>
-                            <p className="font-bold" style={{ color: colors.primary }}>
-                              {session.user?.username || 'User'} {session.user?.lastName || ''}
-                            </p>
-                            <p className="text-xs" style={{ color: colors.primary + '60' }}>
-                              {session.type === 'chat' ? 'Chat Session' : 'Call Session'}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-lg" style={{ color: colors.success }}>
-                            {formatCurrency(session.amount || 0)}
-                          </p>
-                          <div className="flex items-center space-x-4 text-sm" style={{ color: colors.primary + '60' }}>
-                            <span>{session.durationMinutes || 0} min</span>
-                            <span>{formatDate(session.endedAt || session.endTime)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Summary Stats */}
+          {/* Summary Stats - UPDATED to show psychic earnings */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="rounded-xl p-6 text-white shadow-lg"
               style={{ background: `linear-gradient(135deg, ${colors.success} 0%, #047857 100%)` }}>
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold">Avg Session Value</h3>
+                <h3 className="text-lg font-semibold">Avg Session Value (Your Share)</h3>
                 <FaMoneyBillWave className="text-2xl" />
               </div>
               <p className="text-3xl font-bold">
                 {summary.allTime?.sessions > 0 
-                  ? formatCurrency(summary.allTime.earnings / summary.allTime.sessions)
+                  ? formatCurrency((summary.allTime.psychicEarnings || 0) / summary.allTime.sessions)
                   : '$0.00'
                 }
               </p>
-              <p className="opacity-90 mt-2">Per session average</p>
+              <p className="opacity-90 mt-2">Per session (25% of avg total)</p>
             </div>
             
             <div className="rounded-xl p-6 text-white shadow-lg"
@@ -1077,7 +1192,7 @@ const PsychicEarnings = () => {
         </>
       )}
 
-      {/* User Earnings Modal */}
+      {/* User Earnings Modal - UPDATED to show psychic earnings */}
       {showUserModal && selectedUser && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
@@ -1085,7 +1200,7 @@ const PsychicEarnings = () => {
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h2 className="text-2xl font-bold" style={{ color: colors.primary }}>
-                    {selectedUser.firstName} {selectedUser.lastName || ''}'s Details
+                    {selectedUser.username}'s Details
                   </h2>
                   <p style={{ color: colors.primary + '70' }}>{selectedUser.email}</p>
                 </div>
@@ -1110,12 +1225,12 @@ const PsychicEarnings = () => {
                       <div className="w-20 h-20 rounded-full flex items-center justify-center"
                         style={{ background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)` }}>
                         <span className="text-3xl font-bold text-white">
-                          {selectedUser.firstName?.[0]?.toUpperCase() || 'U'}
+                          {selectedUser.username?.[0]?.toUpperCase() || 'U'}
                         </span>
                       </div>
                       <div>
                         <h3 className="text-xl font-bold" style={{ color: colors.primary }}>
-                          {selectedUser.firstName} {selectedUser.lastName || ''}
+                          {selectedUser.username}
                         </h3>
                         <p style={{ color: colors.primary + '70' }}>{selectedUser.email}</p>
                       </div>
@@ -1137,11 +1252,18 @@ const PsychicEarnings = () => {
                           <div className="text-sm font-bold mb-2 capitalize" 
                             style={{ color: colors.primary + '70' }}>{period}</div>
                           <div className="text-2xl font-bold" style={{ color: colors.success }}>
-                            {formatCurrency(periodData.amount || 0)}
+                            {formatCurrency(periodData.psychicEarnings || 0)}
                           </div>
-                          <div className="flex justify-between text-sm mt-2">
-                            <span style={{ color: colors.chat }}>Chat: {formatCurrency(periodData.chatAmount || 0)}</span>
-                            <span style={{ color: colors.call }}>Call: {formatCurrency(periodData.callAmount || 0)}</span>
+                          <div className="text-xs mb-2" style={{ color: colors.primary + '50' }}>
+                            from {formatCurrency(periodData.totalPaid || 0)} total
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span style={{ color: colors.chat }}>
+                              Chat: {formatCurrency(periodData.chatEarnings || 0)}
+                            </span>
+                            <span style={{ color: colors.call }}>
+                              Call: {formatCurrency(periodData.callEarnings || 0)}
+                            </span>
                           </div>
                           <div className="text-sm mt-1" style={{ color: colors.primary + '70' }}>
                             {periodData.sessions || 0} sessions
@@ -1181,7 +1303,10 @@ const PsychicEarnings = () => {
                               </div>
                               <div className="text-right">
                                 <p className="font-bold" style={{ color: colors.success }}>
-                                  {formatCurrency(session.amount || 0)}
+                                  {formatCurrency(session.psychicEarnings || 0)}
+                                </p>
+                                <p className="text-xs" style={{ color: colors.primary + '50' }}>
+                                  from {formatCurrency(session.totalAmount || 0)} total
                                 </p>
                                 <p className="text-xs" style={{ color: colors.primary + '60' }}>
                                   {session.durationMinutes || 0} min

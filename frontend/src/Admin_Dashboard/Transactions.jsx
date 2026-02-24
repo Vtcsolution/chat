@@ -416,15 +416,7 @@ const Transactionss = () => {
                             
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 w-8 p-0"
-                                  onClick={() => navigate(`/admin/dashboard/transactions/${transaction._id}`)}
-                                  title="View Details"
-                                >
-                                  <CreditCard className="h-4 w-4" />
-                                </Button>
+                              
                                 <Button
                                   variant="destructive"
                                   size="sm"

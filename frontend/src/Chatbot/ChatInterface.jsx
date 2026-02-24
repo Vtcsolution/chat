@@ -206,12 +206,12 @@ const EnhancedTimerDisplay = ({
   const creditsPerSecond = ratePerMin ? ratePerMin / 60 : 0;
   const estimatedCreditsLeft = countdownSeconds * creditsPerSecond;
   return (
-   <div className="flex items-center gap-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg px-4 py-2">
+ <div className="flex items-center gap-4 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg px-4 py-2">
   {/* Timer */}
   <div className="flex flex-col items-center">
     <div className="flex items-center gap-1">
       <Clock className="h-3 w-3 text-green-600" />
-      <span className="text-xs text-gray-600">Resterende tijd:</span>
+      <span className="text-xs text-gray-600">Time remaining:</span>
     </div>
     <div className="text-lg font-bold text-green-700 font-mono">
       {formatCountdown(countdownSeconds)}
@@ -222,7 +222,7 @@ const EnhancedTimerDisplay = ({
   <div className="flex flex-col items-center">
     <div className="flex items-center gap-1">
       <CreditCard className="h-3 w-3 text-blue-600" />
-      <span className="text-xs text-gray-600">Gebruikte credits:</span>
+      <span className="text-xs text-gray-600">Credits used:</span>
     </div>
     <div className="text-lg font-bold text-blue-700">
       {estimatedCreditsUsed.toFixed(2)}
@@ -236,13 +236,13 @@ const EnhancedTimerDisplay = ({
   <div className="flex flex-col items-center">
     <div className="flex items-center gap-1">
       <Zap className="h-3 w-3 text-yellow-600" />
-      <span className="text-xs text-gray-600">Resterende credits:</span>
+      <span className="text-xs text-gray-600">Credits remaining:</span>
     </div>
     <div className="text-lg font-bold text-yellow-700">
       {userCredits.toFixed(2)}
     </div>
     <div className="text-xs text-gray-500">
-      ~{estimatedCreditsLeft.toFixed(2)} over
+      ~{estimatedCreditsLeft.toFixed(2)} left
     </div>
   </div>
   <div className="h-8 w-px bg-green-200"></div>
@@ -252,7 +252,7 @@ const EnhancedTimerDisplay = ({
     variant="outline"
     className="h-7 text-xs border-red-300 text-red-600 hover:bg-red-50"
   >
-    Sessie beëindigen
+    End session
   </Button>
 </div>
   );
@@ -2368,7 +2368,7 @@ userCredits < ratePerMin && (
                     {!(activeSession && activeSession.status === 'active' && countdownSeconds > 0) && (
                       <div className="absolute inset-0 bg-gray-100/80 rounded-full flex items-center justify-center">
                         <span className="text-sm text-gray-500">
-                          {activeSession ? "Add credits to continue chatting" : "Start een betaalde chatsessie"}
+                          {activeSession ? "Add credits to continue chatting" : "Start a paid chat session."}
                         </span>
                       </div>
                     )}

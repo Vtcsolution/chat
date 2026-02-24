@@ -46,6 +46,40 @@ const PsychicActiveCallPage = () => {
   const [hasJoinedRoom, setHasJoinedRoom] = useState(false);
   const [dataFetched, setDataFetched] = useState(false);
   
+  // Create axios instance
+  const API_BASE = import.meta.env.VITE_BASE_URL || 'http://localhost:5001';
+  
+  const api = useRef(
+    axios.create({
+      baseURL: API_BASE,
+      timeout: 30000,
+      headers: {
+        'Content-Type': 'application/json'
+      }
+    })
+  );
+
+  // Add request interceptor
+  useEffect(() => {
+    const requestInterceptor = api.current.interceptors.request.use(
+      (config) => {
+        const token = localStorage.getItem('psychicToken');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+          console.log('✅ Token added to request:', token.substring(0, 20) + '...');
+        } else {
+          console.log('❌ No token found in localStorage');
+        }
+        return config;
+      },
+      (error) => Promise.reject(error)
+    );
+
+    return () => {
+      api.current.interceptors.request.eject(requestInterceptor);
+    };
+  }, []);
+  
   // Refs
   const socketRef = useRef(null);
   const countdownRef = useRef(null);
@@ -59,9 +93,7 @@ const PsychicActiveCallPage = () => {
   const autoConnectTimerRef = useRef(null);
   const connectionCheckIntervalRef = useRef(null);
   const tokenCheckIntervalRef = useRef(null);
-  const statusCheckIntervalRef = useRef(null); // NEW: For checking status
-  
-  const API_BASE = import.meta.env.VITE_BASE_URL || 'http://localhost:5001';
+  const statusCheckIntervalRef = useRef(null);
 
   // Color scheme fallback
   const colorScheme = colors || {
@@ -99,7 +131,7 @@ const PsychicActiveCallPage = () => {
       clearInterval(tokenCheckIntervalRef.current);
       tokenCheckIntervalRef.current = null;
     }
-    if (statusCheckIntervalRef.current) { // NEW
+    if (statusCheckIntervalRef.current) {
       clearInterval(statusCheckIntervalRef.current);
       statusCheckIntervalRef.current = null;
     }
@@ -161,39 +193,28 @@ const PsychicActiveCallPage = () => {
       }
       
       try {
-        const token = localStorage.getItem('psychicToken');
-        const response = await axios.get(`${API_BASE}/api/calls/psychic/sync-timer/${currentSessionId}`, {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          withCredentials: true
-        });
+        const response = await api.current.get(`/api/calls/psychic/sync-timer/${currentSessionId}`);
         
         if (response.data.success) {
           const data = response.data.data;
           
-          // Check if call has ended
           if (data.status === 'completed' || data.status === 'ended' || data.status === 'failed') {
             console.log('⚠️ Server reports call ended during polling');
             handleCallEndFromServer(data);
             return;
           }
           
-          // CRITICAL FIX: If server says call is in-progress but our status is ringing, update it
           if (data.status === 'in-progress' && callStatus === 'ringing') {
             console.log('🔄 Updating status from ringing to in-progress based on server data');
             setCallStatus('in-progress');
           }
           
-          // Update elapsed time with server value
           if (data.elapsedSeconds !== undefined) {
             setElapsedTime(data.elapsedSeconds);
             setLastServerSync(Date.now());
             setSyncStatus('synced');
           }
           
-          // Update earnings if provided
           if (data.creditsUsed !== undefined) {
             setEarnings(data.creditsUsed);
           } else if (callDetails?.ratePerMin && data.elapsedSeconds !== undefined) {
@@ -245,7 +266,7 @@ const PsychicActiveCallPage = () => {
       
       twilioConnectedRef.current = true;
       setConnectionStatus('connected');
-      setCallStatus('in-progress'); // Ensure status is in-progress
+      setCallStatus('in-progress');
       setIsConnecting(false);
       
       setupAudioPermissionHandler();
@@ -254,7 +275,6 @@ const PsychicActiveCallPage = () => {
       console.log('✅ Auto-connect successful');
       toast.success('Audio connected!');
       
-      // Clear any check intervals
       if (tokenCheckIntervalRef.current) {
         clearInterval(tokenCheckIntervalRef.current);
         tokenCheckIntervalRef.current = null;
@@ -272,7 +292,6 @@ const PsychicActiveCallPage = () => {
       setIsConnecting(false);
       twilioConnectedRef.current = false;
       
-      // Retry after 3 seconds
       autoConnectTimerRef.current = setTimeout(() => {
         if (!twilioConnectedRef.current && token && room) {
           console.log('🔄 Retrying auto-connect...');
@@ -284,29 +303,23 @@ const PsychicActiveCallPage = () => {
     }
   }, [isConnecting, startTimerPolling]);
 
-  // NEW: Function to check call status from server
+  // Function to check call status from server
   const checkCallStatus = useCallback(async () => {
     const currentSessionId = callSessionIdRef.current || callDetails?.callSessionId;
     if (!currentSessionId) return;
     
     try {
-      const token = localStorage.getItem('psychicToken');
-      const response = await axios.get(`${API_BASE}/api/calls/status/${currentSessionId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        withCredentials: true
-      });
+      const response = await api.current.get(`/api/calls/status/${currentSessionId}`);
       
       if (response.data.success) {
         const data = response.data.data;
         console.log('📊 Status check result:', { serverStatus: data.status, localStatus: callStatus });
         
-        // CRITICAL FIX: If server says in-progress but we're stuck in ringing, update status
         if (data.status === 'in-progress' && callStatus === 'ringing') {
           console.log('🔄 Correcting status from ringing to in-progress based on status check');
           setCallStatus('in-progress');
         }
         
-        // If call has ended
         if (data.status === 'ended' || data.status === 'completed' || data.status === 'failed') {
           console.log('⚠️ Status check shows call ended');
           handleCallEndFromServer(data);
@@ -321,12 +334,10 @@ const PsychicActiveCallPage = () => {
   const waitForTokenAndConnect = useCallback(() => {
     console.log('🔍 Starting token availability check...');
     
-    // Clear any existing interval
     if (tokenCheckIntervalRef.current) {
       clearInterval(tokenCheckIntervalRef.current);
     }
     
-    // Check every 500ms for token and room
     tokenCheckIntervalRef.current = setInterval(() => {
       console.log('⏰ Checking token availability:', {
         hasToken: !!twilioToken,
@@ -336,19 +347,16 @@ const PsychicActiveCallPage = () => {
         callStatus
       });
       
-      // If we have both token and room, and we're not connected yet, attempt connection
       if (twilioToken && roomName && !twilioConnectedRef.current) {
         console.log('🎯 Token and room available! Attempting auto-connect...');
         attemptAutoConnect(twilioToken, roomName);
         
-        // Clear interval after attempting
         if (tokenCheckIntervalRef.current) {
           clearInterval(tokenCheckIntervalRef.current);
           tokenCheckIntervalRef.current = null;
         }
       }
       
-      // If we're already connected, clear the interval
       if (twilioConnectedRef.current) {
         console.log('✅ Already connected, stopping token check');
         if (tokenCheckIntervalRef.current) {
@@ -366,17 +374,10 @@ const PsychicActiveCallPage = () => {
     setError(null);
     
     try {
-      const token = localStorage.getItem('psychicToken');
-      if (!token) {
-        toast.error('Please login first');
-        navigate('/psychic/login');
-        return;
-      }
-
       let endpoints = [
-        `${API_BASE}/api/calls/details/${requestId}`,
-        `${API_BASE}/api/calls/request/${requestId}`,
-        `${API_BASE}/api/calls/status/${requestId}`
+        `/api/calls/details/${requestId}`,
+        `/api/calls/request/${requestId}`,
+        `/api/calls/status/${requestId}`
       ];
       
       let response = null;
@@ -384,15 +385,8 @@ const PsychicActiveCallPage = () => {
       
       for (const endpoint of endpoints) {
         try {
-          console.log(`Trying endpoint: ${endpoint}`);
-          response = await axios.get(endpoint, {
-            headers: { 
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            withCredentials: true,
-            timeout: 5000
-          });
+          console.log(`Trying endpoint: ${API_BASE}${endpoint}`);
+          response = await api.current.get(endpoint);
           
           if (response?.data?.success) {
             data = response.data.data || response.data;
@@ -408,25 +402,20 @@ const PsychicActiveCallPage = () => {
         throw new Error('Failed to fetch call details from all endpoints');
       }
       
-      // Process the data
       let callRequestData = data.callRequest || data;
       let userData = data.user || data.userId || {};
       let activeSessionData = data.activeSession || {};
       
-      // Store call session ID in ref
       if (activeSessionData._id || callRequestData.callSessionId || data._id) {
         callSessionIdRef.current = activeSessionData._id || callRequestData.callSessionId || data._id;
         console.log('📌 Call Session ID set:', callSessionIdRef.current);
       }
       
-      // Set states
       setCallDetails(callRequestData);
       setUserDetails(userData);
       
-      // Determine call status - CRITICAL: Check if elapsed time exists to determine if call is in progress
       let status = 'pending';
       
-      // First check if there's elapsed time - this indicates call is in progress regardless of status field
       if (data.elapsedSeconds !== undefined && data.elapsedSeconds > 0) {
         console.log('⚠️ Elapsed time detected, forcing status to in-progress');
         status = 'in-progress';
@@ -441,7 +430,6 @@ const PsychicActiveCallPage = () => {
       setCallStatus(status);
       console.log('📊 Final call status:', status);
       
-      // Set room name and token - CRITICAL FOR AUDIO
       const newRoomName = activeSessionData?.roomName || data?.roomName;
       const newTwilioToken = activeSessionData?.participantTokens?.psychic || data?.participantTokens?.psychic;
       
@@ -455,7 +443,6 @@ const PsychicActiveCallPage = () => {
         setTwilioToken(newTwilioToken);
       }
       
-      // Calculate time remaining for pending calls
       if (data.timeRemaining !== undefined) {
         setTimeRemaining(data.timeRemaining);
       } else if (callRequestData.expiresAt) {
@@ -464,17 +451,14 @@ const PsychicActiveCallPage = () => {
         setTimeRemaining(Math.max(0, Math.floor((expiresAt - now) / 1000)));
       }
       
-      // Set elapsed time from server
       if (data.elapsedSeconds !== undefined) {
         console.log('📅 Using server elapsed time:', data.elapsedSeconds);
         setElapsedTime(data.elapsedSeconds);
         
-        // Calculate initial earnings
         const ratePerMin = callRequestData.ratePerMin || 1;
         const initialEarnings = (data.elapsedSeconds / 60) * ratePerMin;
         setEarnings(parseFloat(initialEarnings.toFixed(2)));
       } else if (activeSessionData.startTime) {
-        // Fallback calculation if elapsedSeconds not provided
         const startTime = new Date(activeSessionData.startTime);
         const now = new Date();
         const calculatedElapsed = Math.max(0, Math.floor((now - startTime) / 1000));
@@ -486,7 +470,6 @@ const PsychicActiveCallPage = () => {
         setEarnings(parseFloat(initialEarnings.toFixed(2)));
       }
       
-      // Start timer polling (will work for both ringing and in-progress)
       startTimerPolling();
       
       setDataFetched(true);
@@ -508,20 +491,7 @@ const PsychicActiveCallPage = () => {
     setIsCheckingActiveCall(true);
     
     try {
-      const token = localStorage.getItem('psychicToken');
-      if (!token) {
-        toast.error('Please login first');
-        navigate('/psychic/login');
-        return;
-      }
-
-      const response = await axios.get(`${API_BASE}/api/calls/psychic/active`, {
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        withCredentials: true
-      });
+      const response = await api.current.get('/api/calls/psychic/active');
       
       console.log('📊 Psychic active call response:', response.data);
       
@@ -575,13 +545,11 @@ const PsychicActiveCallPage = () => {
 
     console.log('🔌 Initializing audio socket for psychic:', psychicId);
     
-    // Disconnect existing
     if (socketRef.current) {
       socketRef.current.removeAllListeners();
       audioSocketManager.disconnect();
     }
     
-    // Connect to audio namespace
     const socket = audioSocketManager.connect(psychicId, psychicToken);
     socketRef.current = socket;
 
@@ -590,10 +558,8 @@ const PsychicActiveCallPage = () => {
       setSocketConnected(true);
       reconnectAttemptsRef.current = 0;
       
-      // Register psychic
       socket.emit('psychic-register', psychicId);
       
-      // Re-join room if we have it
       if (roomName) {
         console.log('📡 Joining room on connect:', roomName);
         socket.emit('join-room', roomName);
@@ -620,14 +586,12 @@ const PsychicActiveCallPage = () => {
       console.log(`🔄 Socket reconnected after ${attemptNumber} attempts`);
       setSocketConnected(true);
       
-      // Re-register and re-join room
       socket.emit('psychic-register', psychicId);
       if (roomName) {
         socket.emit('join-room', roomName);
       }
     });
 
-    // Timer sync events
     socket.on('timer-sync', (data) => {
       console.log('⏱️ Timer sync event from server:', data);
       
@@ -635,7 +599,6 @@ const PsychicActiveCallPage = () => {
         setElapsedTime(data.elapsedSeconds);
         setLastServerSync(Date.now());
         
-        // If we get timer sync and status is ringing, update to in-progress
         if (callStatus === 'ringing') {
           console.log('🔄 Updating status from ringing to in-progress based on timer sync');
           setCallStatus('in-progress');
@@ -643,7 +606,6 @@ const PsychicActiveCallPage = () => {
       }
     });
 
-    // Call ended events
     socket.on('call-completed', (data) => {
       console.log('📞 Call completed event:', data);
       
@@ -703,7 +665,6 @@ const PsychicActiveCallPage = () => {
   // Accept call
   const acceptCall = async () => {
     try {
-      const token = localStorage.getItem('psychicToken');
       const requestId = callRequestId || activeCall?.callRequestId;
       
       if (!requestId) {
@@ -714,18 +675,7 @@ const PsychicActiveCallPage = () => {
       console.log(`📞 Accepting call: ${requestId}`);
       setIsConnecting(true);
       
-      const response = await axios.post(
-        `${API_BASE}/api/calls/accept/${requestId}`,
-        {},
-        {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          withCredentials: true,
-          timeout: 10000
-        }
-      );
+      const response = await api.current.post(`/api/calls/accept/${requestId}`, {});
       
       if (response.data.success) {
         const { token: twilioToken, roomName: callRoomName, callSessionId } = response.data.data;
@@ -738,7 +688,6 @@ const PsychicActiveCallPage = () => {
           callSessionIdRef.current = callSessionId;
         }
         
-        // Auto-connect after acceptance
         await attemptAutoConnect(twilioToken, callRoomName);
         
         toast.success('Call accepted! Connecting audio...');
@@ -757,7 +706,6 @@ const PsychicActiveCallPage = () => {
   // Reject call
   const handleRejectCall = async () => {
     try {
-      const token = localStorage.getItem('psychicToken');
       const requestId = callRequestId || activeCall?.callRequestId;
       
       if (!requestId) {
@@ -765,17 +713,9 @@ const PsychicActiveCallPage = () => {
         return;
       }
       
-      await axios.post(
-        `${API_BASE}/api/calls/reject/${requestId}`,
-        { reason: 'Not available' },
-        {
-          headers: { 
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          withCredentials: true
-        }
-      );
+      await api.current.post(`/api/calls/reject/${requestId}`, {
+        reason: 'Not available'
+      });
       
       toast.success('Call rejected');
       navigate('/psychic/dashboard');
@@ -789,7 +729,6 @@ const PsychicActiveCallPage = () => {
   // End call
   const handleEndCall = async () => {
     try {
-      const token = localStorage.getItem('psychicToken');
       const currentCallSessionId = callSessionIdRef.current || callDetails?.callSessionId;
       
       if (!currentCallSessionId) {
@@ -800,10 +739,8 @@ const PsychicActiveCallPage = () => {
       
       console.log('🛑 Psychic ending call:', currentCallSessionId);
       
-      // Stop polling
       stopAllIntervals();
       
-      // Emit socket event
       if (socketRef.current && socketRef.current.connected) {
         socketRef.current.emit('call-ended', {
           callSessionId: currentCallSessionId,
@@ -811,27 +748,16 @@ const PsychicActiveCallPage = () => {
         });
       }
       
-      // Cleanup Twilio
       cleanupTwilio();
       
-      // Notify backend via API
       try {
-        await axios.post(
-          `${API_BASE}/api/calls/end/${currentCallSessionId}`,
-          { endReason: 'ended_by_psychic' },
-          {
-            headers: { 
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            withCredentials: true
-          }
-        );
+        await api.current.post(`/api/calls/end/${currentCallSessionId}`, {
+          endReason: 'ended_by_psychic'
+        });
       } catch (apiError) {
         console.error('API end call error:', apiError);
       }
       
-      // Update UI
       setCallStatus('ended');
       setActiveCall(null);
       toast.success('Call ended successfully');
@@ -974,15 +900,13 @@ const PsychicActiveCallPage = () => {
     };
   }, [timeRemaining, callStatus]);
 
-  // Status verification (backup) - Enhanced to check status frequently
+  // Status verification (backup)
   useEffect(() => {
-    // Start status checking interval if we have a session ID
     const currentSessionId = callSessionIdRef.current || callDetails?.callSessionId;
     if (!currentSessionId) return;
     
     console.log('🔍 Starting status verification interval');
     
-    // Check status every 2 seconds
     statusCheckIntervalRef.current = setInterval(() => {
       checkCallStatus();
     }, 2000);
@@ -1004,7 +928,7 @@ const PsychicActiveCallPage = () => {
     }
   }, [roomName, socketConnected, hasJoinedRoom]);
 
-  // CRITICAL FIX: Enhanced auto-connect effect
+  // Auto-connect effect
   useEffect(() => {
     console.log('🔍 Auto-connect check:', {
       callStatus,
@@ -1015,25 +939,20 @@ const PsychicActiveCallPage = () => {
       isConnecting
     });
     
-    // If we're already connected, nothing to do
     if (twilioConnectedRef.current) {
       console.log('✅ Already connected to Twilio');
       return;
     }
     
-    // If we have both token and room, attempt connection immediately
-    // This works for both ringing and in-progress status
     if (twilioToken && roomName && !twilioConnectedRef.current && !isConnecting) {
       console.log('🔌 Token and room available! Attempting immediate connection...');
       attemptAutoConnect(twilioToken, roomName);
     } 
-    // If we have call but missing token/room, start waiting for them
     else if ((callStatus === 'in-progress' || callStatus === 'ringing') && (!twilioToken || !roomName) && !twilioConnectedRef.current) {
       console.log('⏳ Call in progress but missing token/room. Starting token check...');
       waitForTokenAndConnect();
     }
     
-    // Cleanup function
     return () => {
       if (tokenCheckIntervalRef.current) {
         clearInterval(tokenCheckIntervalRef.current);
@@ -1049,11 +968,9 @@ const PsychicActiveCallPage = () => {
     
     console.log('🎯 Component mounted with callRequestId:', callRequestId);
     
-    // Initialize socket
     const socket = initializeSocket();
     socketRef.current = socket;
     
-    // Initial load
     if (callRequestId) {
       fetchCallDetails(callRequestId);
     } else {
@@ -1109,25 +1026,26 @@ const PsychicActiveCallPage = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4" 
         style={{ backgroundColor: colorScheme.deepPurple }}>
-        <div className="text-center max-w-md">
-          <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6" 
+        <div className="text-center max-w-md w-full">
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6" 
             style={{ backgroundColor: colorScheme.antiqueGold + '20' }}>
-            <Loader2 className="h-10 w-10 animate-spin" style={{ color: colorScheme.antiqueGold }} />
+            <Loader2 className="h-8 w-8 sm:h-10 sm:w-10 animate-spin" style={{ color: colorScheme.antiqueGold }} />
           </div>
-          <h2 className="text-2xl font-bold text-white mb-3">
+          <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 sm:mb-3">
             {isCheckingActiveCall ? 'Finding Your Call...' : 'Loading Call Details...'}
           </h2>
-          <p className="text-white/70 mb-6">
+          <p className="text-sm sm:text-base text-white/70 mb-4 sm:mb-6">
             Please wait while we connect you to the call
           </p>
-          <div className="flex justify-center gap-4">
+          <div className="flex justify-center gap-3 sm:gap-4">
             <Button
               onClick={() => navigate('/psychic/dashboard')}
               variant="outline"
-              className="border-white/30 text-white hover:bg-white/10"
+              className="border-white/30 text-white hover:bg-white/10 text-sm sm:text-base px-3 sm:px-4 py-2"
             >
               <ArrowLeft className="h-4 w-4 mr-2" />
-              Back to Dashboard
+              <span className="hidden sm:inline">Back to Dashboard</span>
+              <span className="sm:hidden">Back</span>
             </Button>
           </div>
         </div>
@@ -1140,33 +1058,35 @@ const PsychicActiveCallPage = () => {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4" 
         style={{ backgroundColor: colorScheme.deepPurple }}>
-        <Card className="p-8 max-w-md w-full bg-white/5 backdrop-blur-sm border-white/10">
+        <Card className="p-4 sm:p-6 md:p-8 max-w-md w-full bg-white/5 backdrop-blur-sm border-white/10">
           <div className="text-center">
-            <div className="w-16 h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-4">
-              <AlertCircle className="h-8 w-8 text-red-400" />
+            <div className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-red-500/20 flex items-center justify-center mx-auto mb-3 sm:mb-4">
+              <AlertCircle className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-red-400" />
             </div>
-            <h2 className="text-2xl font-bold text-white mb-3">
+            <h2 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-2">
               {activeCall ? 'Call Connection Issue' : 'No Active Call Found'}
             </h2>
-            <p className="text-white/70 mb-6">
+            <p className="text-sm sm:text-base text-white/70 mb-4 sm:mb-6">
               {error || 'You don\'t have any active calls at the moment.'}
             </p>
-            <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
               <Button
                 onClick={checkPsychicActiveCall}
-                className="w-full"
+                className="w-full text-sm sm:text-base py-2 sm:py-3"
                 style={{ backgroundColor: colorScheme.antiqueGold, color: colorScheme.deepPurple }}
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Check for Calls Again
+                <span className="hidden sm:inline">Check for Calls Again</span>
+                <span className="sm:hidden">Check Again</span>
               </Button>
               <Button
                 onClick={() => navigate('/psychic/dashboard')}
                 variant="outline"
-                className="w-full border-white/30 text-white hover:bg-white/10"
+                className="w-full border-white/30 text-white hover:bg-white/10 text-sm sm:text-base py-2 sm:py-3"
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
-                Return to Dashboard
+                <span className="hidden sm:inline">Return to Dashboard</span>
+                <span className="sm:hidden">Dashboard</span>
               </Button>
             </div>
           </div>
@@ -1175,262 +1095,260 @@ const PsychicActiveCallPage = () => {
     );
   }
 
-  // MAIN RENDER
+  // MAIN RENDER - FULLY RESPONSIVE
   return (
     <div className="min-h-screen" style={{ backgroundColor: colorScheme.deepPurple }}>
-      <div className="relative z-10">
-        {/* Header */}
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center gap-4">
-              <Button
-                onClick={() => navigate('/psychic/dashboard')}
-                variant="ghost"
-                size="sm"
-                className="text-white hover:bg-white/10"
-              >
-                <ArrowLeft className="h-5 w-5 mr-2" />
-                Back
-              </Button>
-              
-              <Badge className={getStatusBadge().color + " text-white px-3 py-1"}>
-                <span className="font-medium">{getStatusBadge().text}</span>
-              </Badge>
-              
-              <div className="flex items-center gap-1">
-                <div className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
-                <span className="text-white/60 text-xs">{socketConnected ? 'Live' : 'Offline'}</span>
-              </div>
+      <div className="relative z-10 px-3 sm:px-4 md:px-6 py-3 sm:py-4 md:py-6">
+        {/* Header - Responsive */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-4 sm:mb-6">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+            <Button
+              onClick={() => navigate('/psychic/dashboard')}
+              variant="ghost"
+              size="sm"
+              className="text-white hover:bg-white/10 p-2 h-auto"
+            >
+              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+              <span className="hidden sm:inline ml-2">Back</span>
+            </Button>
+            
+            <Badge className={`${getStatusBadge().color} text-white px-2 sm:px-3 py-1 text-xs sm:text-sm`}>
+              <span className="font-medium">{getStatusBadge().text}</span>
+            </Badge>
+            
+            <div className="flex items-center gap-1 bg-white/10 rounded-full px-2 py-1">
+              <div className={`h-2 w-2 rounded-full ${socketConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+              <span className="text-white/60 text-xs hidden sm:inline">{socketConnected ? 'Live' : 'Offline'}</span>
+            </div>
 
-              {callStatus === 'in-progress' && (
-                <div className="flex items-center gap-1">
-                  <div className={`h-2 w-2 rounded-full ${Date.now() - lastServerSync < 2000 ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                  <span className="text-white/60 text-xs">
-                    {Date.now() - lastServerSync < 2000 ? 'Synced' : 'Syncing...'}
+            {callStatus === 'in-progress' && (
+              <div className="flex items-center gap-1 bg-white/10 rounded-full px-2 py-1">
+                <div className={`h-2 w-2 rounded-full ${Date.now() - lastServerSync < 2000 ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                <span className="text-white/60 text-xs hidden sm:inline">
+                  {Date.now() - lastServerSync < 2000 ? 'Synced' : 'Syncing'}
+                </span>
+              </div>
+            )}
+          </div>
+          
+          <div className="flex items-center gap-2 sm:gap-4 text-white/80 ml-auto sm:ml-0">
+            <div className="flex items-center gap-1 sm:gap-2 bg-white/10 rounded-full px-2 sm:px-3 py-1">
+              <Wifi className="h-3 w-3 sm:h-4 sm:w-4" />
+              <span className="text-xs hidden sm:inline">Strong</span>
+            </div>
+            <div className="text-xs sm:text-sm bg-white/10 rounded-full px-2 sm:px-3 py-1">
+              {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            </div>
+          </div>
+        </div>
+        
+        {/* User Card - Fully Responsive */}
+        <Card className="p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 bg-white/5 backdrop-blur-sm border-white/10">
+          <div className="flex flex-col sm:flex-row items-start gap-4 sm:gap-6">
+            <Avatar className="w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 border-3 sm:border-4 mx-auto sm:mx-0" 
+              style={{ borderColor: colorScheme.antiqueGold }}>
+              <AvatarImage 
+                src={userDetails?.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(userDetails?.firstName || 'User')}&background=${colorScheme.antiqueGold.replace('#', '')}&color=${colorScheme.deepPurple.replace('#', '')}`} 
+                alt={userDetails?.firstName}
+              />
+              <AvatarFallback className="text-xl sm:text-2xl font-bold" 
+                style={{ backgroundColor: colorScheme.antiqueGold, color: colorScheme.deepPurple }}>
+                {userDetails?.firstName?.charAt(0) || 'U'}
+              </AvatarFallback>
+            </Avatar>
+            
+            <div className="flex-1 w-full">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div className="text-center sm:text-left">
+                  <h1 className="text-lg sm:text-xl md:text-2xl font-bold text-white mb-1">
+                    {userDetails?.firstName || 'Client'} {userDetails?.lastName || ''}
+                  </h1>
+                  <p className="text-white/70 flex items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm">
+                    <User className="h-3 w-3 sm:h-4 sm:w-4" />
+                    <span>ID: {userDetails?._id?.slice(-6) || 'N/A'}</span>
+                  </p>
+                </div>
+                
+                <div className="text-center sm:text-right">
+                  <div className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-1">
+                    ${(callDetails.ratePerMin || 1).toFixed(2)}
+                    <span className="text-xs font-normal text-white/70">/min</span>
+                  </div>
+                  <Badge variant="outline" className="border-green-500 text-green-500 text-xs">
+                    <DollarSign className="h-3 w-3 mr-1" />
+                    Active Rate
+                  </Badge>
+                </div>
+              </div>
+              
+              <div className="mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-white/10 flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-4">
+                <div className="flex items-center gap-2 bg-white/10 rounded-full px-3 py-1">
+                  <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-white/70" />
+                  <span className="text-white text-xs sm:text-sm">
+                    {callStatus === 'in-progress' 
+                      ? formatTime(elapsedTime)
+                      : callStatus === 'pending'
+                      ? formatCountdown(timeRemaining)
+                      : callStatus
+                    }
                   </span>
                 </div>
-              )}
-            </div>
-            
-            <div className="flex items-center gap-4 text-white/80">
-              <div className="flex items-center gap-2">
-                <Wifi className="h-4 w-4" />
-                <span className="text-sm">Strong</span>
-              </div>
-              <div className="text-sm">
-                {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                
+                <div className="flex items-center gap-2 bg-white/10 rounded-full px-3 py-1">
+                  <div className={`w-2 h-2 rounded-full ${getConnectionBadge().color}`} />
+                  <span className="text-white/70 text-xs hidden sm:inline">{getConnectionBadge().text}</span>
+                </div>
+                
+                {callStatus === 'in-progress' && (
+                  <div className="flex items-center gap-2 sm:ml-auto">
+                    <div className={`flex items-center gap-1 ${isMuted ? 'bg-red-500/20' : 'bg-white/10'} rounded-full px-2 py-1`}>
+                      <div className={`w-2 h-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-green-500'}`} />
+                      <span className="text-xs text-white/70 hidden sm:inline">{isMuted ? 'Muted' : 'Mic On'}</span>
+                    </div>
+                    <div className={`flex items-center gap-1 ${isAudioPlaying ? 'bg-green-500/20' : 'bg-yellow-500/20'} rounded-full px-2 py-1`}>
+                      <div className={`w-2 h-2 rounded-full ${isAudioPlaying ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                      <span className="text-xs text-white/70 hidden sm:inline">{isAudioPlaying ? 'Audio On' : 'Audio Off'}</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-          
-          {/* User Card */}
-          <Card className="p-6 mb-6 bg-white/5 backdrop-blur-sm border-white/10">
-            <div className="flex items-start gap-6">
-              <Avatar className="w-24 h-24 border-4" 
-                style={{ borderColor: colorScheme.antiqueGold }}>
-                <AvatarImage 
-                  src={userDetails?.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(userDetails?.firstName || 'User')}&background=${colorScheme.antiqueGold.replace('#', '')}&color=${colorScheme.deepPurple.replace('#', '')}`} 
-                  alt={userDetails?.firstName}
-                />
-                <AvatarFallback className="text-2xl font-bold" 
-                  style={{ backgroundColor: colorScheme.antiqueGold, color: colorScheme.deepPurple }}>
-                  {userDetails?.firstName?.charAt(0) || 'U'}
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="flex-1">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <h1 className="text-2xl font-bold text-white mb-1">
-                      {userDetails?.firstName || 'Client'} {userDetails?.lastName || ''}
-                    </h1>
-                    <p className="text-white/70 flex items-center gap-2">
-                      <User className="h-4 w-4" />
-                      <span>Client ID: {userDetails?._id?.slice(-8) || 'N/A'}</span>
-                    </p>
-                  </div>
-                  
-                  <div className="text-right">
-                    <div className="text-3xl font-bold text-white mb-1">
-                      ${(callDetails.ratePerMin || 1).toFixed(2)}
-                      <span className="text-sm font-normal text-white/70">/min</span>
-                    </div>
-                    <Badge variant="outline" className="border-green-500 text-green-500">
-                      <DollarSign className="h-3 w-3 mr-1" />
-                      Active Rate
-                    </Badge>
-                  </div>
-                </div>
-                
-                <div className="mt-4 pt-4 border-t border-white/10 flex flex-wrap items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-white/70" />
-                    <span className="text-white">
-                      {callStatus === 'in-progress' 
-                        ? `Duration: ${formatTime(elapsedTime)}`
-                        : callStatus === 'pending'
-                        ? `Accept within: ${formatCountdown(timeRemaining)}`
-                        : `Status: ${callStatus}`
-                      }
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <div className={`w-2 h-2 rounded-full ${getConnectionBadge().color}`} />
-                    <span className="text-white/70">{getConnectionBadge().text}</span>
-                  </div>
-                  
-                  {callStatus === 'in-progress' && (
-                    <div className="flex items-center gap-4 ml-auto">
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${isMuted ? 'bg-red-500' : 'bg-green-500'}`} />
-                        <span className="text-sm text-white/70">{isMuted ? 'Muted' : 'Mic On'}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${isAudioPlaying ? 'bg-green-500' : 'bg-yellow-500'}`} />
-                        <span className="text-sm text-white/70">{isAudioPlaying ? 'Audio On' : 'Audio Off'}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
+        </Card>
         
-        {/* Main Call Interface */}
-        <div className="container mx-auto px-6">
-          {/* Earnings Display */}
+        {/* Main Call Interface - Fully Responsive */}
+        <div className="container mx-auto px-0 sm:px-2 md:px-4">
+          {/* Earnings Display - Responsive */}
           {callStatus === 'in-progress' && (
-            <Card className="p-6 mb-6 bg-white/5 backdrop-blur-sm border-white/10">
-              <div className="grid grid-cols-3 gap-6">
+            <Card className="p-3 sm:p-4 md:p-6 mb-4 sm:mb-6 bg-white/5 backdrop-blur-sm border-white/10">
+              <div className="grid grid-cols-3 gap-2 sm:gap-4 md:gap-6">
                 <div className="text-center">
-                  <p className="text-white/70 text-sm mb-1">Current Earnings</p>
-                  <p className="text-3xl font-bold text-green-400">${earnings.toFixed(2)}</p>
+                  <p className="text-white/70 text-xs sm:text-sm mb-1">Earnings</p>
+                  <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-green-400">${earnings.toFixed(2)}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-white/70 text-sm mb-1">Call Duration</p>
-                  <p className="text-2xl font-bold text-white">{formatTime(elapsedTime)}</p>
+                  <p className="text-white/70 text-xs sm:text-sm mb-1">Duration</p>
+                  <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white">{formatTime(elapsedTime)}</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-white/70 text-sm mb-1">Rate</p>
-                  <p className="text-2xl font-bold text-white">${(callDetails.ratePerMin || 1).toFixed(2)}/min</p>
+                  <p className="text-white/70 text-xs sm:text-sm mb-1">Rate</p>
+                  <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl font-bold text-white">${(callDetails.ratePerMin || 1).toFixed(2)}</p>
                 </div>
               </div>
               <Progress 
                 value={(elapsedTime % 60) * 1.6667} 
-                className="mt-4 bg-white/20 h-2"
+                className="mt-3 sm:mt-4 bg-white/20 h-1.5 sm:h-2"
                 indicatorClassName="bg-green-500"
               />
               <p className="text-white/70 text-xs mt-2 text-center">
-                Minute {Math.floor(elapsedTime / 60) + 1} • {60 - (elapsedTime % 60)}s remaining
+                Minute {Math.floor(elapsedTime / 60) + 1} • {60 - (elapsedTime % 60)}s left
               </p>
             </Card>
           )}
           
-          {/* Call Timer Display */}
-          <div className="text-center mb-8">
-            <div className="text-6xl font-bold text-white mb-4 tracking-tighter">
+          {/* Call Timer Display - Responsive */}
+          <div className="text-center mb-4 sm:mb-6 md:mb-8">
+            <div className="text-4xl sm:text-5xl md:text-6xl font-bold text-white mb-2 sm:mb-4 tracking-tighter">
               {formatTime(elapsedTime)}
             </div>
-            <p className="text-white/70 text-lg">
+            <p className="text-white/70 text-xs sm:text-sm md:text-base px-2">
               {callStatus === 'in-progress' 
-                ? `Live audio call in progress ${isAudioPlaying ? '• Audio Active' : '• Click to enable audio'}`
+                ? `Live call ${isAudioPlaying ? '• Audio Active' : '• Click to enable audio'}`
                 : callStatus === 'ringing'
                 ? 'Connecting to audio call...'
                 : callStatus === 'pending'
                 ? 'Incoming call request'
                 : callStatus === 'expired'
-                ? 'Call request has expired'
+                ? 'Call request expired'
                 : callStatus === 'completed'
-                ? 'Call completed successfully'
+                ? 'Call completed'
                 : callStatus === 'cancelled'
-                ? 'Call was cancelled by user'
-                : 'Call session has ended'
+                ? 'Call cancelled by user'
+                : 'Call has ended'
               }
             </p>
           </div>
           
-          {/* Call Controls */}
-          <div className="max-w-md mx-auto mb-12">
+          {/* Call Controls - Fully Responsive */}
+          <div className="max-w-xs sm:max-w-sm md:max-w-md mx-auto mb-8 sm:mb-12">
             {callStatus === 'pending' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-2 sm:gap-4">
                 <Button
                   onClick={acceptCall}
                   size="lg"
-                  className="h-16 text-lg bg-green-600 hover:bg-green-700 text-white"
+                  className="h-12 sm:h-14 md:h-16 text-sm sm:text-base md:text-lg bg-green-600 hover:bg-green-700 text-white px-2"
                   disabled={timeRemaining !== null && timeRemaining <= 0}
                 >
-                  <Phone className="h-6 w-6 mr-3" />
-                  Accept Call
+                  <Phone className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 md:mr-3" />
+                  <span className="hidden xs:inline">Accept</span>
                 </Button>
                 
                 <Button
                   onClick={handleRejectCall}
                   size="lg"
                   variant="outline"
-                  className="h-16 text-lg border-red-500 text-red-500 hover:bg-red-500/10"
+                  className="h-12 sm:h-14 md:h-16 text-sm sm:text-base md:text-lg border-red-500 text-red-500 hover:bg-red-500/10 px-2"
                 >
-                  <PhoneOff className="h-6 w-6 mr-3" />
-                  Reject
+                  <PhoneOff className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-1 sm:mr-2 md:mr-3" />
+                  <span className="hidden xs:inline">Reject</span>
                 </Button>
               </div>
             )}
             
             {callStatus === 'ringing' && (
               <div className="flex items-center justify-center">
-                <Loader2 className="h-10 w-10 animate-spin text-white mr-3" />
-                <span className="text-white text-lg">Connecting Audio...</span>
+                <Loader2 className="h-6 w-6 sm:h-8 sm:w-8 md:h-10 md:w-10 animate-spin text-white mr-2 sm:mr-3" />
+                <span className="text-white text-sm sm:text-base md:text-lg">Connecting Audio...</span>
               </div>
             )}
             
             {callStatus === 'in-progress' && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-3 gap-4">
+              <div className="space-y-3 sm:space-y-4">
+                <div className="grid grid-cols-3 gap-2 sm:gap-4">
                   <Button
                     onClick={handleMuteToggle}
                     size="lg"
                     variant="outline"
-                    className={`h-16 ${isMuted ? 'bg-red-500/20 border-red-500 text-red-500' : 'border-white/30 text-white hover:bg-white/10'}`}
+                    className={`h-12 sm:h-14 md:h-16 ${isMuted ? 'bg-red-500/20 border-red-500 text-red-500' : 'border-white/30 text-white hover:bg-white/10'}`}
                   >
-                    {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
+                    {isMuted ? <MicOff className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" /> : <Mic className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />}
                   </Button>
                   
                   <Button
                     onClick={handleEndCall}
                     size="lg"
-                    className="h-16 bg-red-600 hover:bg-red-700 text-white"
+                    className="h-12 sm:h-14 md:h-16 bg-red-600 hover:bg-red-700 text-white"
                   >
-                    <PhoneOff className="h-6 w-6" />
+                    <PhoneOff className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />
                   </Button>
                   
                   <Button
                     onClick={handleSpeakerToggle}
                     size="lg"
                     variant="outline"
-                    className={`h-16 ${!isSpeakerOn ? 'bg-amber-500/20 border-amber-500 text-amber-500' : 'border-white/30 text-white hover:bg-white/10'}`}
+                    className={`h-12 sm:h-14 md:h-16 ${!isSpeakerOn ? 'bg-amber-500/20 border-amber-500 text-amber-500' : 'border-white/30 text-white hover:bg-white/10'}`}
                   >
-                    {isSpeakerOn ? <Volume2 className="h-6 w-6" /> : <VolumeX className="h-6 w-6" />}
+                    {isSpeakerOn ? <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" /> : <VolumeX className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6" />}
                   </Button>
                 </div>
                 
                 {!isAudioPlaying && (
                   <div className="text-center">
-                    <p className="text-white/70 text-sm mb-2">
-                      Audio not playing? Click anywhere on the page to enable audio
+                    <p className="text-white/70 text-xs sm:text-sm">
+                      ⚡ Click anywhere to enable audio
                     </p>
                   </div>
                 )}
                 
                 {connectionStatus === 'connecting' && (
                   <div className="text-center">
-                    <p className="text-yellow-400 text-sm">Connecting to audio... Please wait</p>
+                    <p className="text-yellow-400 text-xs sm:text-sm">Connecting to audio... Please wait</p>
                   </div>
                 )}
                 
                 {connectionStatus === 'failed' && (
                   <div className="text-center">
-                    <p className="text-red-400 text-sm">Connection failed. Retrying...</p>
+                    <p className="text-red-400 text-xs sm:text-sm">Connection failed. Retrying...</p>
                   </div>
                 )}
               </div>
@@ -1440,11 +1358,12 @@ const PsychicActiveCallPage = () => {
               <Button
                 onClick={() => navigate('/psychic/dashboard')}
                 size="lg"
-                className="w-full h-16 text-lg"
+                className="w-full h-12 sm:h-14 md:h-16 text-sm sm:text-base md:text-lg"
                 style={{ backgroundColor: colorScheme.antiqueGold, color: colorScheme.deepPurple }}
               >
-                <CheckCircle className="h-6 w-6 mr-3" />
-                Return to Dashboard
+                <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 md:h-6 md:w-6 mr-2 sm:mr-3" />
+                <span className="hidden xs:inline">Return to Dashboard</span>
+                <span className="xs:hidden">Dashboard</span>
               </Button>
             )}
           </div>

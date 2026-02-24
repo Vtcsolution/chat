@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   Loader2,
@@ -25,6 +25,19 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import axios from 'axios';
 import { usePsychicAuth } from "@/context/PsychicAuthContext";
+
+// Color scheme matching your app
+const colors = {
+  primary: "#2B1B3F",      // Deep purple
+  secondary: "#C9A24D",    // Antique gold
+  accent: "#9B7EDE",       // Light purple
+  bgLight: "#3A2B4F",      // Lighter purple
+  textLight: "#E8D9B0",    // Light gold text
+  success: "#10B981",      // Green
+  warning: "#F59E0B",      // Yellow
+  danger: "#EF4444",       // Red
+  background: "#F5F3EB",   // Soft ivory
+};
 
 const PsychicChatRequestModal = ({ request, user, psychic, isOpen, onClose, onAccepted, onRejected }) => {
   const { psychic: currentPsychic } = usePsychicAuth();
@@ -170,111 +183,139 @@ const PsychicChatRequestModal = ({ request, user, psychic, isOpen, onClose, onAc
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto" style={{ backgroundColor: colors.background }}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Sparkles className="h-5 w-5 text-purple-500" />
+          <DialogTitle className="flex items-center gap-2" style={{ color: colors.primary }}>
+            <Sparkles className="h-5 w-5" style={{ color: colors.secondary }} />
             New Chat Request
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription style={{ color: colors.primary + '80' }}>
             Review and respond to chat request from {user.firstName}
           </DialogDescription>
         </DialogHeader>
 
         {/* User Info */}
-        <Card className="border-0 shadow-none">
+        <Card className="border-0 shadow-none" style={{ backgroundColor: 'transparent' }}>
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
               <Avatar className="h-16 w-16">
                 <AvatarImage src={user.image} />
-                <AvatarFallback className="bg-gradient-to-br from-blue-500 to-indigo-500 text-white">
+                <AvatarFallback style={{ 
+                  background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+                  color: 'white'
+                }}>
                   {user.firstName?.[0] || 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-semibold text-lg">{user.username} {user.lastName}</h3>
-                  <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                  <h3 className="font-semibold text-lg" style={{ color: colors.primary }}>
+                    {user.username} {user.lastName}
+                  </h3>
+                  <Badge variant="outline" style={{ 
+                    backgroundColor: colors.secondary + '10',
+                    color: colors.secondary,
+                    borderColor: colors.secondary + '30'
+                  }}>
                     <User className="h-3 w-3 mr-1" />
                     Client
                   </Badge>
                 </div>
-               
               </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Request Details */}
-        <Card className="border-0 shadow-none">
+        <Card className="border-0 shadow-none" style={{ backgroundColor: 'transparent' }}>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Request Details</CardTitle>
+            <CardTitle className="text-sm font-medium" style={{ color: colors.primary }}>
+              Request Details
+            </CardTitle>
           </CardHeader>
           <CardContent className="pb-4 space-y-3">
             <div className="grid grid-cols-2 gap-3">
-              <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+              <div className="p-3 rounded-lg border" style={{ 
+                backgroundColor: colors.accent + '10',
+                borderColor: colors.accent + '30'
+              }}>
                 <div className="flex items-center gap-2 mb-1">
-                  <CreditCard className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm font-medium text-purple-600">Rate</span>
+                  <CreditCard className="h-4 w-4" style={{ color: colors.accent }} />
+                  <span className="text-sm font-medium" style={{ color: colors.accent }}>Rate</span>
                 </div>
-                <div className="text-xl font-bold text-purple-600">
-                  Credit {request.ratePerMin || psychic?.ratePerMin || 1}/min
+                <div className="text-xl font-bold" style={{ color: colors.accent }}>
+                  {request.ratePerMin || psychic?.ratePerMin || 1}/min
                 </div>
               </div>
               
-              <div className="p-3 bg-green-50 rounded-lg border border-green-200">
+              <div className="p-3 rounded-lg border" style={{ 
+                backgroundColor: colors.success + '10',
+                borderColor: colors.success + '30'
+              }}>
                 <div className="flex items-center gap-2 mb-1">
-                  <Timer className="h-4 w-4 text-green-600" />
-                  <span className="text-sm font-medium text-green-600">Time Available</span>
+                  <Timer className="h-4 w-4" style={{ color: colors.success }} />
+                  <span className="text-sm font-medium" style={{ color: colors.success }}>Time Available</span>
                 </div>
-                <div className="text-xl font-bold text-green-600">
-{Number(request.totalMinutesAllowed || 0).toFixed(2)} min
+                <div className="text-xl font-bold" style={{ color: colors.success }}>
+                  {Number(request.totalMinutesAllowed || 0).toFixed(2)} min
                 </div>
               </div>
             </div>
            
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="p-3 rounded-lg border" style={{ 
+              backgroundColor: colors.primary + '10',
+              borderColor: colors.primary + '30'
+            }}>
               <div className="flex items-center gap-2 mb-1">
-                <Wallet className="h-4 w-4 text-blue-600" />
-                <span className="text-sm font-medium text-blue-600">Client Balance</span>
+                <Wallet className="h-4 w-4" style={{ color: colors.primary }} />
+                <span className="text-sm font-medium" style={{ color: colors.primary }}>Client Balance</span>
               </div>
-              <div className="text-lg font-bold text-blue-600">
+              <div className="text-lg font-bold" style={{ color: colors.primary }}>
                 {(request.initialBalance || 0).toFixed(2)}
               </div>
-              <div className="text-xs text-blue-600 mt-1">
+              <div className="text-xs mt-1" style={{ color: colors.primary + '70' }}>
                 Available for this session
               </div>
             </div>
             
-            <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+            <div className="p-3 rounded-lg border" style={{ 
+              backgroundColor: colors.secondary + '10',
+              borderColor: colors.secondary + '30'
+            }}>
               <div className="flex items-center gap-2 mb-1">
-                <DollarSign className="h-4 w-4 text-amber-600" />
-                <span className="text-sm font-medium text-amber-600">Potential Earnings</span>
+                <DollarSign className="h-4 w-4" style={{ color: colors.secondary }} />
+                <span className="text-sm font-medium" style={{ color: colors.secondary }}>Potential Earnings</span>
               </div>
-              <div className="text-xl font-bold text-amber-600">
+              <div className="text-xl font-bold" style={{ color: colors.secondary }}>
                 {calculateEarnings()}
               </div>
-              <div className="text-xs text-amber-600 mt-1">
+              <div className="text-xs mt-1" style={{ color: colors.secondary + '70' }}>
                 If session runs full time
               </div>
             </div>
             
-            <div className="p-3 bg-gray-50 rounded-lg border border-gray-200">
-              <div className="text-xs text-gray-500 mb-1">Requested At</div>
-              <div className="text-sm font-medium text-gray-700">
+            <div className="p-3 rounded-lg border" style={{ 
+              backgroundColor: colors.primary + '05',
+              borderColor: colors.primary + '20'
+            }}>
+              <div className="text-xs" style={{ color: colors.primary + '70' }}>Requested At</div>
+              <div className="text-sm font-medium" style={{ color: colors.primary }}>
                 {formatTime(request.requestedAt || request.createdAt)}
               </div>
             </div>
             
             {/* Session Info Note */}
-            <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+            <div className="p-3 rounded-lg border" style={{ 
+              background: `linear-gradient(135deg, ${colors.primary}10 0%, ${colors.secondary}10 100%)`,
+              borderColor: colors.secondary + '30'
+            }}>
               <div className="flex items-start gap-2">
-                <Shield className="h-4 w-4 text-indigo-600 mt-0.5" />
+                <Shield className="h-4 w-4 mt-0.5" style={{ color: colors.secondary }} />
                 <div>
-                  <div className="text-sm font-medium text-indigo-600 mb-1">
+                  <div className="text-sm font-medium mb-1" style={{ color: colors.secondary }}>
                     Session Information
                   </div>
-                  <p className="text-xs text-indigo-600">
+                  <p className="text-xs" style={{ color: colors.primary + '80' }}>
                     Accepting will start a paid session immediately. Timer will begin counting down from {(request.totalMinutesAllowed || 0).toFixed(2)} minutes.
                   </p>
                 </div>
@@ -288,7 +329,10 @@ const PsychicChatRequestModal = ({ request, user, psychic, isOpen, onClose, onAc
           <Button
             onClick={handleAccept}
             disabled={isLoading}
-            className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+            className="w-full text-white"
+            style={{ 
+              background: `linear-gradient(135deg, ${colors.success} 0%, ${colors.primary} 100%)`,
+            }}
           >
             {isLoading && action === 'accept' ? (
               <>
@@ -307,7 +351,11 @@ const PsychicChatRequestModal = ({ request, user, psychic, isOpen, onClose, onAc
             onClick={handleReject}
             disabled={isLoading}
             variant="outline"
-            className="w-full border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700"
+            className="w-full"
+            style={{ 
+              borderColor: colors.danger + '50',
+              color: colors.danger
+            }}
           >
             {isLoading && action === 'reject' ? (
               <>
@@ -326,6 +374,7 @@ const PsychicChatRequestModal = ({ request, user, psychic, isOpen, onClose, onAc
             onClick={handleClose}
             variant="ghost"
             className="w-full"
+            style={{ color: colors.primary }}
             disabled={isLoading}
           >
             Close
@@ -336,8 +385,8 @@ const PsychicChatRequestModal = ({ request, user, psychic, isOpen, onClose, onAc
         {isLoading && (
           <div className="absolute inset-0 bg-white/80 flex items-center justify-center rounded-lg">
             <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2 text-primary" />
-              <p className="text-sm font-medium">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-2" style={{ color: colors.primary }} />
+              <p className="text-sm font-medium" style={{ color: colors.primary }}>
                 {action === 'accept' ? 'Starting paid session...' : 'Processing request...'}
               </p>
             </div>

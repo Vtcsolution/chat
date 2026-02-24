@@ -22,9 +22,9 @@ import {
 import { usePsychicAuth } from "@/context/PsychicAuthContext";
 import { 
   Loader2, Upload, X, Sparkles, UserPlus, Mail, Lock, 
-  DollarSign, User, Award, Globe, Shield, BookOpen, Star,
+  User, Award, Globe, Shield, BookOpen, Star,
   Heart, Briefcase, Moon, Sun, Compass, Sparkle, Brain,
-  Eye, Cloud
+  Eye, Cloud, MapPin, Calendar, Layers, Hash
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -63,10 +63,14 @@ export default function PsychicRegister() {
     email: "",
     password: "",
     confirmPassword: "",
-    ratePerMin: "",
     bio: "",
     gender: "",
-    category: "", // New category field
+    category: "",
+    abilities: "",           // Added missing field
+    location: "",            // Added missing field
+    languages: "English",    // Added missing field (default)
+    experience: "",          // Added missing field
+    specialization: "",      // Added missing field
     image: "",
   });
 
@@ -83,7 +87,6 @@ export default function PsychicRegister() {
     setFormData({ ...formData, gender: value });
   };
 
-  // New handler for category selection
   const handleCategoryChange = (value) => {
     setFormData({ ...formData, category: value });
   };
@@ -112,6 +115,18 @@ export default function PsychicRegister() {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast.error("Please select an image file (JPG, PNG, GIF)");
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast.error("Image size should be less than 5MB");
+        return;
+      }
+      
       setImageFile(file);
       setImagePreviewUrl(URL.createObjectURL(file));
       setFormData(prev => ({ ...prev, image: "" }));
@@ -136,14 +151,8 @@ export default function PsychicRegister() {
       return;
     }
 
-    // Validate category is selected
     if (!formData.category) {
       toast.error("Please select your primary category");
-      return;
-    }
-
-    if (parseFloat(formData.ratePerMin) < 0.99) {
-      toast.error("Minimum rate is $0.99 per minute");
       return;
     }
 
@@ -160,10 +169,14 @@ export default function PsychicRegister() {
         name: formData.name,
         email: formData.email,
         password: formData.password,
-        ratePerMin: formData.ratePerMin,
         bio: formData.bio,
         gender: formData.gender,
-        category: formData.category, // Include category
+        category: formData.category,
+        abilities: formData.abilities,                 // Add abilities
+        location: formData.location,                    // Add location
+        languages: formData.languages,                  // Add languages
+        experience: formData.experience,                // Add experience
+        specialization: formData.specialization,        // Add specialization
         image: finalImageUrl
       };
 
@@ -408,70 +421,39 @@ export default function PsychicRegister() {
                     />
                   </div>
                 </div>
-
-                {/* NEW: Category Selection */}
-                <div className="space-y-2">
-                  <Label className="flex items-center gap-2 font-bold"
-                    style={{ color: colors.primary }}>
-                    <Star className="h-4 w-4" style={{ color: colors.secondary }} />
-                    Primary Category *
-                  </Label>
-                  <Select onValueChange={handleCategoryChange} required>
-                    <SelectTrigger style={{ 
-                      borderColor: colors.secondary + '30',
-                      color: colors.primary
-                    }}>
-                      <SelectValue placeholder="Select your primary category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {psychicCategories.map((category) => (
-                        <SelectItem key={category.value} value={category.value}>
-                          <div className="flex items-center gap-2">
-                            <span style={{ color: colors.secondary }}>{category.icon}</span>
-                            <span>{category.label}</span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-xs mt-1" style={{ color: colors.bgLight }}>
-                    Choose the category that best describes your primary gift
-                  </p>
-                </div>
-
-                {/* Rate and Gender */}
+                
                 <div className="grid md:grid-cols-2 gap-4">
+                  {/* Category Selection */}
                   <div className="space-y-2">
-                    <Label htmlFor="ratePerMin" className="flex items-center gap-2">
-                      <DollarSign className="h-4 w-4" style={{ color: colors.secondary }} />
-                      Rate per Minute ($) *
+                    <Label className="flex items-center gap-2 font-bold"
+                      style={{ color: colors.primary }}>
+                      <Layers className="h-4 w-4" style={{ color: colors.secondary }} />
+                      Primary Category *
                     </Label>
-                    <div className="relative">
-                      <span className="absolute left-3 top-1/2 transform -translate-y-1/2 font-bold"
-                        style={{ color: colors.secondary }}>
-                        $
-                      </span>
-                      <Input
-                        id="ratePerMin"
-                        type="number"
-                        step="0.01"
-                        min="0.99"
-                        required
-                        value={formData.ratePerMin}
-                        onChange={handleChange}
-                        placeholder="3.99"
-                        className="pl-8"
-                        style={{ 
-                          borderColor: colors.secondary + '30',
-                          color: colors.primary
-                        }}
-                      />
-                    </div>
+                    <Select onValueChange={handleCategoryChange} required>
+                      <SelectTrigger style={{ 
+                        borderColor: colors.secondary + '30',
+                        color: colors.primary
+                      }}>
+                        <SelectValue placeholder="Select your primary category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {psychicCategories.map((category) => (
+                          <SelectItem key={category.value} value={category.value}>
+                            <div className="flex items-center gap-2">
+                              <span style={{ color: colors.secondary }}>{category.icon}</span>
+                              <span>{category.label}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     <p className="text-xs mt-1" style={{ color: colors.bgLight }}>
-                      Minimum: $0.99 per minute
+                      Choose the category that best describes your primary gift
                     </p>
                   </div>
 
+                  {/* Gender Selection */}
                   <div className="space-y-2">
                     <Label className="flex items-center gap-2">
                       <User className="h-4 w-4" style={{ color: colors.secondary }} />
@@ -491,6 +473,107 @@ export default function PsychicRegister() {
                       </SelectContent>
                     </Select>
                   </div>
+                </div>
+
+                {/* Location & Languages */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="location" className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4" style={{ color: colors.secondary }} />
+                      Location
+                    </Label>
+                    <Input 
+                      id="location" 
+                      value={formData.location}
+                      onChange={handleChange}
+                      placeholder="e.g., New York, USA"
+                      style={{ 
+                        borderColor: colors.secondary + '30',
+                        color: colors.primary
+                      }}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="languages" className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" style={{ color: colors.secondary }} />
+                      Languages
+                    </Label>
+                    <Input 
+                      id="languages" 
+                      value={formData.languages}
+                      onChange={handleChange}
+                      placeholder="English, Spanish, French"
+                      style={{ 
+                        borderColor: colors.secondary + '30',
+                        color: colors.primary
+                      }}
+                    />
+                    <p className="text-xs" style={{ color: colors.bgLight }}>
+                      Separate multiple languages with commas
+                    </p>
+                  </div>
+                </div>
+
+                {/* Experience & Specialization */}
+                <div className="grid md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="experience" className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4" style={{ color: colors.secondary }} />
+                      Experience (years)
+                    </Label>
+                    <Input 
+                      id="experience" 
+                      type="number"
+                      min="0"
+                      max="50"
+                      value={formData.experience}
+                      onChange={handleChange}
+                      placeholder="5"
+                      style={{ 
+                        borderColor: colors.secondary + '30',
+                        color: colors.primary
+                      }}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="specialization" className="flex items-center gap-2">
+                      <Award className="h-4 w-4" style={{ color: colors.secondary }} />
+                      Specialization
+                    </Label>
+                    <Input 
+                      id="specialization" 
+                      value={formData.specialization}
+                      onChange={handleChange}
+                      placeholder="e.g., Love & Relationships"
+                      style={{ 
+                        borderColor: colors.secondary + '30',
+                        color: colors.primary
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Abilities */}
+                <div className="space-y-2">
+                  <Label htmlFor="abilities" className="flex items-center gap-2">
+                    <Award className="h-4 w-4" style={{ color: colors.secondary }} />
+                    Special Abilities
+                  </Label>
+                  <Input 
+                    id="abilities" 
+                    value={formData.abilities}
+                    onChange={handleChange}
+                    placeholder="Tarot, Astrology, Numerology, Mediumship"
+                    style={{ 
+                      borderColor: colors.secondary + '30',
+                      color: colors.primary
+                    }}
+                  />
+                  <p className="text-xs" style={{ color: colors.bgLight }}>
+                    Separate multiple abilities with commas
+                  </p>
                 </div>
 
                 {/* Bio */}

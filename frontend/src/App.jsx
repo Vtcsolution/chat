@@ -90,6 +90,9 @@ import { PsychicAuthProvider } from "./context/PsychicAuthContext";
 import PsychicActiveCallPage from "./Psychic_Dashboard/PsychicActiveCallPage";
 import ChatSessions from "./All_Components/ChatSessions";
 import MyWallet from "./All_Components/Mywallet";
+import PsychicForgotPassword from "./Psychic_Dashboard/PsychicForgotPassword";
+import PsychicResetPassword from "./Psychic_Dashboard/PsychicResetPassword";
+import PsychicEarningsPayment from "./Admin_Dashboard/HumanChat/PsychicEarningsPayment";
 
 
 const App = () => {
@@ -131,7 +134,8 @@ const App = () => {
     // Psychic auth routes
     "/psychic/login",
     "/psychic/register",
-    
+     "/psychic/forgot-password",
+  "/psychic/reset-password/:resetToken",
     // ✅ ADDED: Chat interface routes (should not show footer)
     "/message/:psychic_id",
     
@@ -314,6 +318,7 @@ const App = () => {
                 <Route path="/reset-password/:token" element={<Reset_Password />} />
                 <Route path="/payment/result" element={<PaymentResult />} />
                 <Route path="/payment/result/:id" element={<PaymentResult />} />
+                
                 <Route path="/psychic/:psychicId" element={<PsychicProfile />} />
                 
                 <Route path="/payment/result-temp" element={<PaymentRedirectHandler />} />
@@ -361,6 +366,12 @@ const App = () => {
                 <Route path="/admin/dashboard/allusers" element={
                   <AdminProtectedRoute><AllUsers /></AdminProtectedRoute>
                 } />
+
+                <Route path="/admin/dashboard/psychic-earnings" element={
+  <AdminProtectedRoute>
+    <PsychicEarningsPayment />
+  </AdminProtectedRoute>
+} />
                 <Route path="/admin/dashboard/alladvisors" element={
                   <AdminProtectedRoute><AllAdvisors /></AdminProtectedRoute>
                 } />
@@ -419,7 +430,9 @@ const App = () => {
                 {/* Psychic Routes */}
                 <Route path="/psychic/login" element={<PsychicLogin />} />
                 <Route path="/psychic/register" element={<PsychicRegister />} />
-                
+                <Route path="/psychic/forgot-password" element={<PsychicForgotPassword />} />
+          <Route path="/psychic/reset-password/:resetToken" element={<PsychicResetPassword />} />
+
                 {/* Psychic Dashboard Routes */}
                 <Route path="/psychic/dashboard" element={
                   <PsychicProtectedRoute>

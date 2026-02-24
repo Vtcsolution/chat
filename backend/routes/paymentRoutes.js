@@ -7,10 +7,11 @@ const { protect } = require("../middleware/auth");
 router.post("/topup", protect, paymentController.createWalletTopup);
 router.post("/webhook", paymentController.handleWebhook); // Stripe webhook
 router.get("/status/:paymentId", protect, paymentController.checkPaymentStatus);
+router.get("/user/recent", protect, paymentController.getRecentUserPayments);
+
 router.get("/plans", paymentController.getCreditPlans);
 router.post("/calculate", protect, paymentController.calculateCustomAmount);
 router.get('/emergency-fix', paymentController.emergencyFixIndex);
-
 // User payments
 router.get("/user/:userId", protect, paymentController.getUserPayments);
 

@@ -23,7 +23,15 @@ import {
   Headphones,
   Phone,
   Calendar,
-  Star
+  Star,
+  Percent,
+  Wallet,
+  TrendingDown,
+  PieChart,
+  Info,
+  ArrowUp,
+  ArrowDown,
+  MessagesSquare
 } from "lucide-react";
 import {
   Card,
@@ -47,6 +55,12 @@ import { useAdminAuth } from "@/context/AdminAuthContext";
 import Dashboard_Navbar from "../Admin_Navbar";
 import Doctor_Side_Bar from "../SideBar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import axios from 'axios';
 import { Avatar, AvatarFallback } from "@radix-ui/react-avatar";
 
@@ -64,7 +78,11 @@ const colors = {
   chartLine: "#0ea5e9",    // Sky blue for charts
   call: "#3B82F6",         // Blue for calls
   chat: "#10B981",         // Green for chats
+  psychicShare: "#8B5CF6", // Purple for psychic earnings
+  platformShare: "#3B82F6" // Blue for platform earnings
 };
+
+const COMMISSION_RATE = 0.25; // 25% to psychics, 75% to platform
 
 const AdminHumanChatDashboard = () => {
   const navigate = useNavigate();
@@ -74,6 +92,7 @@ const AdminHumanChatDashboard = () => {
   const [side, setSide] = useState(false);
   const [fetchingSessionIds, setFetchingSessionIds] = useState(false);
   const [userDetails, setUserDetails] = useState({});
+  const [showSplitInfo, setShowSplitInfo] = useState(true);
 
   // State for dashboard data
   const [dashboardData, setDashboardData] = useState({
@@ -93,19 +112,40 @@ const AdminHumanChatDashboard = () => {
       completedCallSessions: 0
     },
     financials: {
-      totalRevenue: 0,
+      // Chat revenue
+      chatTotalPaidByUsers: 0,
+      chatPsychicEarnings: 0,
+      chatPlatformEarnings: 0,
       totalPaidTime: 0,
-      avgSessionValue: 0,
-      totalCallRevenue: 0,
+      avgChatSessionValue: 0,
+      
+      // Call revenue
+      callTotalPaidByUsers: 0,
+      callPsychicEarnings: 0,
+      callPlatformEarnings: 0,
       averageCallValue: 0,
-      totalCallMinutes: 0
+      totalCallMinutes: 0,
+      
+      // Combined totals
+      totalPaidByUsers: 0,
+      totalPsychicEarnings: 0,
+      totalPlatformEarnings: 0,
+      totalSessions: 0
     },
     callStatistics: {
       totalSessions: 0,
       activeSessions: 0,
       completedSessions: 0,
       totalCreditsUsed: 0,
+      totalPaidByUsers: 0,
+      psychicEarnings: 0,
+      platformEarnings: 0,
       averageCallDuration: 0
+    },
+    splitInfo: {
+      psychicRate: '25%',
+      platformRate: '75%',
+      description: 'Psychics receive 25% of all payments, platform retains 75%'
     },
     lists: {
       psychics: [],
@@ -143,6 +183,7 @@ const AdminHumanChatDashboard = () => {
           currentStatus: {},
           financials: {},
           callStatistics: {},
+          splitInfo: {},
           lists: {}
         };
         
@@ -299,10 +340,10 @@ const AdminHumanChatDashboard = () => {
     
     if (userDetails[timerId]) {
       const user = userDetails[timerId];
-      if (user.name && user.name !== 'Unknown User') return user.name;
-      if (user.fullName) return user.fullName;
-      if (user.firstName || user.lastName) {
-        return `${user.firstName || ''} ${user.lastName || ''}`.trim();
+      if (user.username && user.username !== 'Unknown User') return user.username;
+      if (user.username) return user.username;
+      if (user.username || user.username) {
+        return `${user.username || ''} ${user.username || ''}`.trim();
       }
       if (user.email) return user.email.split('@')[0];
     }
@@ -314,10 +355,10 @@ const AdminHumanChatDashboard = () => {
     }
     
     if (timer.user && typeof timer.user === 'object') {
-      if (timer.user.name) return timer.user.name;
-      if (timer.user.fullName) return timer.user.fullName;
-      if (timer.user.firstName || timer.user.lastName) {
-        return `${timer.user.firstName || ''} ${timer.user.lastName || ''}`.trim();
+      if (timer.user.username) return timer.user.username;
+      if (timer.user.username) return timer.user.username;
+      if (timer.user.username || timer.user.username) {
+        return `${timer.user.username || ''} ${timer.user.username || ''}`.trim();
       }
       if (timer.user.email) return timer.user.email.split('@')[0];
     }
@@ -367,7 +408,7 @@ const AdminHumanChatDashboard = () => {
         
         toast({
           title: "User details updated",
-          description: `Found user: ${user.name || user.email || 'User'}`,
+          description: `Found user: ${user.username || user.email || 'User'}`,
           variant: "default"
         });
       }
@@ -488,7 +529,41 @@ const AdminHumanChatDashboard = () => {
             </div>
           </div>
 
-          {/* Main Statistics Cards */}
+          {/* Split Info Banner */}
+          {showSplitInfo && (
+            <Card className="mb-6 border-l-4 border-l-purple-500">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center">
+                      <Percent className="h-5 w-5 text-purple-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium" style={{ color: colors.primary }}>
+                        Revenue Split: 75% Platform / 25% Psychic
+                      </p>
+                      <p className="text-sm" style={{ color: colors.primary + '70' }}>
+                        Psychics receive 25% of all payments, platform retains 75%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <Badge className="bg-purple-500/10 text-purple-700 border-purple-500/20">
+                      Commission Rate: 25%
+                    </Badge>
+                    <button
+                      onClick={() => setShowSplitInfo(false)}
+                      className="p-1 hover:opacity-70"
+                    >
+                      <Info className="h-4 w-4" style={{ color: colors.primary + '60' }} />
+                    </button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Main Statistics Cards - UPDATED to show split */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
             {/* Total Psychics Card */}
             <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
@@ -565,18 +640,74 @@ const AdminHumanChatDashboard = () => {
               </CardContent>
             </Card>
            
-            {/* Total Revenue Card */}
+            {/* Total Paid by Users Card */}
             <Card className="border-none shadow-lg transition-all duration-300 hover:scale-[1.02] hover:shadow-xl">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Total Revenue</p>
-                    <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>
-                      ${((dashboardData.financials.totalRevenue || 0) + (dashboardData.financials.totalCallRevenue || 0)).toFixed(2)}
-                    </p>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center justify-between cursor-help">
+                        <div>
+                          <p className="text-xs font-medium" style={{ color: colors.primary + '70' }}>Total Paid by Users</p>
+                          <p className="text-xl font-bold mt-1" style={{ color: colors.primary }}>
+                            {formatAmount(dashboardData.financials.totalPaidByUsers || 0)}
+                          </p>
+                        </div>
+                        <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.secondary} 0%, ${colors.warning} 100%)` }}>
+                          <DollarSign className="h-5 w-5" style={{ color: colors.primary }} />
+                        </div>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Total amount users paid (100%) before split</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Revenue Split Cards - NEW */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+            <Card className="border-none shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.psychicShare}10 0%, ${colors.psychicShare}20 100%)` }}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Wallet className="h-5 w-5" style={{ color: colors.psychicShare }} />
+                    <span className="font-semibold" style={{ color: colors.psychicShare }}>Psychic Earnings (25%)</span>
                   </div>
-                  <div className="h-10 w-10 rounded-full flex items-center justify-center shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.secondary} 0%, ${colors.warning} 100%)` }}>
-                    <DollarSign className="h-5 w-5" style={{ color: colors.primary }} />
+                  <Badge className="bg-purple-500/10 text-purple-700">Total: {formatAmount(dashboardData.financials.totalPsychicEarnings || 0)}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs" style={{ color: colors.primary + '70' }}>From Chats</p>
+                    <p className="text-lg font-bold" style={{ color: colors.psychicShare }}>{formatAmount(dashboardData.financials.chatPsychicEarnings || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs" style={{ color: colors.primary + '70' }}>From Calls</p>
+                    <p className="text-lg font-bold" style={{ color: colors.psychicShare }}>{formatAmount(dashboardData.financials.callPsychicEarnings || 0)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-lg" style={{ background: `linear-gradient(135deg, ${colors.platformShare}10 0%, ${colors.platformShare}20 100%)` }}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5" style={{ color: colors.platformShare }} />
+                    <span className="font-semibold" style={{ color: colors.platformShare }}>Platform Earnings (75%)</span>
+                  </div>
+                  <Badge className="bg-blue-500/10 text-blue-700">Total: {formatAmount(dashboardData.financials.totalPlatformEarnings || 0)}</Badge>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <p className="text-xs" style={{ color: colors.primary + '70' }}>From Chats</p>
+                    <p className="text-lg font-bold" style={{ color: colors.platformShare }}>{formatAmount(dashboardData.financials.chatPlatformEarnings || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs" style={{ color: colors.primary + '70' }}>From Calls</p>
+                    <p className="text-lg font-bold" style={{ color: colors.platformShare }}>{formatAmount(dashboardData.financials.callPlatformEarnings || 0)}</p>
                   </div>
                 </div>
               </CardContent>
@@ -646,15 +777,19 @@ const AdminHumanChatDashboard = () => {
             </Card>
           </div>
 
-          {/* Revenue Summary Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {/* Revenue Summary Cards - UPDATED to show split */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
             <Card className="border-none shadow-md">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <MessageSquare className="h-4 w-4 text-green-600" />
                   <span className="text-sm font-medium">Chat Revenue</span>
                 </div>
-                <p className="text-2xl font-bold text-green-600">{formatAmount(dashboardData.financials.totalRevenue || 0)}</p>
+                <p className="text-lg font-bold text-green-600">{formatAmount(dashboardData.financials.chatTotalPaidByUsers || 0)}</p>
+                <div className="flex justify-between text-xs mt-1">
+                  <span style={{ color: colors.psychicShare }}>Psychic: {formatAmount(dashboardData.financials.chatPsychicEarnings || 0)}</span>
+                  <span style={{ color: colors.platformShare }}>Platform: {formatAmount(dashboardData.financials.chatPlatformEarnings || 0)}</span>
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">{dashboardData.financials.totalPaidTime || 0} hours paid</p>
               </CardContent>
             </Card>
@@ -665,7 +800,11 @@ const AdminHumanChatDashboard = () => {
                   <PhoneCall className="h-4 w-4 text-blue-600" />
                   <span className="text-sm font-medium">Call Revenue</span>
                 </div>
-                <p className="text-2xl font-bold text-blue-600">{formatAmount(dashboardData.financials.totalCallRevenue || 0)}</p>
+                <p className="text-lg font-bold text-blue-600">{formatAmount(dashboardData.financials.callTotalPaidByUsers || 0)}</p>
+                <div className="flex justify-between text-xs mt-1">
+                  <span style={{ color: colors.psychicShare }}>Psychic: {formatAmount(dashboardData.financials.callPsychicEarnings || 0)}</span>
+                  <span style={{ color: colors.platformShare }}>Platform: {formatAmount(dashboardData.financials.callPlatformEarnings || 0)}</span>
+                </div>
                 <p className="text-xs text-muted-foreground mt-1">{dashboardData.financials.totalCallMinutes || 0} minutes</p>
               </CardContent>
             </Card>
@@ -673,21 +812,72 @@ const AdminHumanChatDashboard = () => {
             <Card className="border-none shadow-md">
               <CardContent className="p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="h-4 w-4 text-purple-600" />
-                  <span className="text-sm font-medium">Combined Total</span>
+                  <Wallet className="h-4 w-4 text-purple-600" />
+                  <span className="text-sm font-medium">Total Paid by Users</span>
                 </div>
-                <p className="text-2xl font-bold text-purple-600">
-                  {formatAmount((dashboardData.financials.totalRevenue || 0) + (dashboardData.financials.totalCallRevenue || 0))}
+                <p className="text-lg font-bold text-purple-600">
+                  {formatAmount(dashboardData.financials.totalPaidByUsers || 0)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-1">All time earnings</p>
+                <p className="text-xs text-muted-foreground mt-1">100% of all payments</p>
+              </CardContent>
+            </Card>
+
+            <Card className="border-none shadow-md">
+              <CardContent className="p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <TrendingUp className="h-4 w-4 text-purple-600" />
+                  <span className="text-sm font-medium">Average Session</span>
+                </div>
+                <p className="text-lg font-bold text-purple-600">
+                  {formatAmount(dashboardData.financials.totalSessions > 0 
+                    ? dashboardData.financials.totalPaidByUsers / dashboardData.financials.totalSessions 
+                    : 0)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">per session total</p>
               </CardContent>
             </Card>
           </div>
 
+          {/* Call Statistics Card - NEW */}
+          {dashboardData.callStatistics.totalSessions > 0 && (
+            <Card className="mb-6 border-none shadow-md">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium flex items-center gap-2" style={{ color: colors.primary }}>
+                  <PhoneCall className="h-4 w-4" />
+                  Call Statistics
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Calls</p>
+                    <p className="font-bold">{dashboardData.callStatistics.totalSessions}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Completed</p>
+                    <p className="font-bold">{dashboardData.callStatistics.completedSessions}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Total Paid</p>
+                    <p className="font-bold">{formatAmount(dashboardData.callStatistics.totalPaidByUsers)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Psychic Share</p>
+                    <p className="font-bold" style={{ color: colors.psychicShare }}>{formatAmount(dashboardData.callStatistics.psychicEarnings)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Platform Share</p>
+                    <p className="font-bold" style={{ color: colors.platformShare }}>{formatAmount(dashboardData.callStatistics.platformEarnings)}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Tabs for different lists */}
           <Tabs defaultValue="recent-sessions" className="mb-6">
             <TabsList className="grid grid-cols-4 w-full max-w-2xl bg-transparent gap-2">
-             
+              
               <TabsTrigger 
                 value="recent-calls"
                 className="data-[state=active]:shadow-lg transition-all duration-200"
@@ -709,8 +899,8 @@ const AdminHumanChatDashboard = () => {
                   border: `1px solid ${colors.primary}20`,
                 }}
               >
- <MessageSquare className="h-4 w-4 mr-2" />
-                 Chat Sessions
+                <MessagesSquare className="h-4 w-4 mr-2" />
+              Chat Sessions
               </TabsTrigger>
               <TabsTrigger 
                 value="recent-psychics"
@@ -794,7 +984,7 @@ const AdminHumanChatDashboard = () => {
               </Card>
             </TabsContent>
 
-            {/* Recent Call Sessions Tab */}
+            {/* Recent Call Sessions Tab - UPDATED to show split */}
             <TabsContent value="recent-calls">
               <Card className="border-none shadow-lg">
                 <CardHeader className="pb-3">
@@ -803,7 +993,7 @@ const AdminHumanChatDashboard = () => {
                     Recent Call Sessions
                   </CardTitle>
                   <CardDescription style={{ color: colors.primary + '70' }}>
-                    Latest audio call sessions (1 credit = $1)
+                    Latest audio call sessions with 75/25 split
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -813,7 +1003,9 @@ const AdminHumanChatDashboard = () => {
                         <TableRow style={{ backgroundColor: colors.primary + '05' }}>
                           <TableHead>User</TableHead>
                           <TableHead>Psychic</TableHead>
-                          <TableHead>Revenue</TableHead>
+                          <TableHead>Total Paid</TableHead>
+                          <TableHead>Psychic (25%)</TableHead>
+                          <TableHead>Platform (75%)</TableHead>
                           <TableHead>Duration</TableHead>
                           <TableHead>Status</TableHead>
                           <TableHead>Start Time</TableHead>
@@ -822,9 +1014,9 @@ const AdminHumanChatDashboard = () => {
                       </TableHeader>
                       <TableBody>
                         {loading ? (
-                          <TableRow><TableCell colSpan={7} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
+                          <TableRow><TableCell colSpan={9} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
                         ) : dashboardData.lists.recentCallSessions?.length === 0 ? (
-                          <TableRow><TableCell colSpan={7} className="text-center py-8">No recent call sessions</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={9} className="text-center py-8">No recent call sessions</TableCell></TableRow>
                         ) : (
                           dashboardData.lists.recentCallSessions?.slice(0, 5).map((call, index) => (
                             <TableRow key={call._id || index}>
@@ -842,10 +1034,21 @@ const AdminHumanChatDashboard = () => {
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
-                                  <DollarSign className="h-3 w-3 text-green-600" />
-                                  <span className="font-medium">{formatAmount(call.revenue || call.creditsUsed || 0)}</span>
+                                  <DollarSign className="h-3 w-3 text-yellow-600" />
+                                  <span className="font-medium">{formatAmount(call.totalPaidByUsers || call.revenue || call.creditsUsed || 0)}</span>
                                 </div>
-                                <span className="text-xs text-muted-foreground">{call.creditsUsed || 0} credits</span>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3 text-purple-600" />
+                                  <span className="font-medium text-purple-600">{formatAmount(call.psychicEarnings || 0)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3 text-blue-600" />
+                                  <span className="font-medium text-blue-600">{formatAmount(call.platformEarnings || 0)}</span>
+                                </div>
                               </TableCell>
                               <TableCell>
                                 <div className="flex items-center gap-1">
@@ -876,7 +1079,7 @@ const AdminHumanChatDashboard = () => {
               </Card>
             </TabsContent>
 
-            {/* Recent Paid Timers Tab */}
+            {/* Recent Paid Timers Tab - UPDATED to show split */}
             <TabsContent value="recent-paid">
               <Card className="border-none shadow-lg">
                 <CardHeader className="pb-3">
@@ -885,7 +1088,7 @@ const AdminHumanChatDashboard = () => {
                     Recent Paid Timer Sessions
                   </CardTitle>
                   <CardDescription style={{ color: colors.primary + '70' }}>
-                    {fetchingSessionIds ? "Finding chat sessions..." : "Latest completed paid timer sessions"}
+                    {fetchingSessionIds ? "Finding chat sessions..." : "Latest completed paid timer sessions with 75/25 split"}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -895,7 +1098,9 @@ const AdminHumanChatDashboard = () => {
                         <TableRow style={{ backgroundColor: colors.primary + '05' }}>
                           <TableHead>User</TableHead>
                           <TableHead>Psychic</TableHead>
-                          <TableHead>Amount</TableHead>
+                          <TableHead>Total Paid</TableHead>
+                          <TableHead>Psychic (25%)</TableHead>
+                          <TableHead>Platform (75%)</TableHead>
                           <TableHead>Duration</TableHead>
                           <TableHead>Ended At</TableHead>
                           <TableHead>Actions</TableHead>
@@ -903,9 +1108,9 @@ const AdminHumanChatDashboard = () => {
                       </TableHeader>
                       <TableBody>
                         {loading ? (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center py-8"><Loader2 className="h-6 w-6 animate-spin mx-auto" /></TableCell></TableRow>
                         ) : dashboardData.lists.recentPaidTimers?.length === 0 ? (
-                          <TableRow><TableCell colSpan={6} className="text-center py-8">No recent paid timers</TableCell></TableRow>
+                          <TableRow><TableCell colSpan={8} className="text-center py-8">No recent paid timers</TableCell></TableRow>
                         ) : (
                           dashboardData.lists.recentPaidTimers?.slice(0, 5).map((timer, index) => (
                             <TableRow key={timer._id || index}>
@@ -925,6 +1130,18 @@ const AdminHumanChatDashboard = () => {
                                 <div className="flex items-center gap-1">
                                   <DollarSign className="h-3 w-3 text-yellow-600" />
                                   <span className="font-medium">{formatAmount(timer.amount)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3 text-purple-600" />
+                                  <span className="font-medium text-purple-600">{formatAmount(timer.psychicEarnings || timer.amount * COMMISSION_RATE)}</span>
+                                </div>
+                              </TableCell>
+                              <TableCell>
+                                <div className="flex items-center gap-1">
+                                  <DollarSign className="h-3 w-3 text-blue-600" />
+                                  <span className="font-medium text-blue-600">{formatAmount((timer.amount || 0) * 0.75)}</span>
                                 </div>
                               </TableCell>
                               <TableCell>{formatDuration(timer.duration)}</TableCell>

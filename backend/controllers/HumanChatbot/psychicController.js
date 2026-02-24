@@ -5,12 +5,14 @@ const HumanChatSession = require('../../models/HumanChat/HumanChatSession');
 const PaidTimer = require('../../models/Paidtimer/PaidTimer');
 const ChatRequest = require('../../models/Paidtimer/ChatRequest');
 const mongoose = require('mongoose');
-
+const crypto = require('crypto');
+const nodemailer = require('nodemailer');
+// In psychicController.js, update the generateToken function
 const generateToken = (id) => {
   return jwt.sign(
     { 
       id, 
-      role: 'psychic'
+      role: 'psychic'  // Make sure role is included!
     }, 
     process.env.JWT_SECRET, {
       expiresIn: '30d',
@@ -106,30 +108,41 @@ async function calculateUserRetentionRate(psychicId) {
   }
 }
 
-// @desc    Register a new psychic
-// controllers/HumanChat/psychicController.js (or wherever your controller is)
 
-// @desc    Register a new psychic
-// controllers/HumanChat/psychicController.js
-
-// @desc    Register a new psychic
 const registerPsychic = asyncHandler(async (req, res) => {
-  const { name, email, password, ratePerMin, bio, gender, image, category } = req.body;
+  const { 
+    name, 
+    email, 
+    password, 
+    bio, 
+    gender, 
+    image, 
+    category,
+    abilities,      // Added missing field
+    location,       // Added missing field
+    languages,      // Added missing field
+    experience,     // Added missing field
+    specialization  // Added missing field
+  } = req.body;
 
   console.log("📝 Registration attempt with data:", {
     name,
     email,
-    ratePerMin,
     gender,
     category,
+    abilities: abilities ? 'provided' : 'not provided',
+    location: location || 'not provided',
+    languages: languages ? 'provided' : 'not provided',
+    experience: experience || 'not provided',
+    specialization: specialization || 'not provided',
     hasImage: !!image
   });
 
-  // Validate required fields including category
-  if (!name || !email || !password || !ratePerMin || !bio || !gender || !category) {
+  // Validate required fields (ratePerMin removed from validation)
+  if (!name || !email || !password || !bio || !gender || !category) {
     return res.status(400).json({
       success: false,
-      message: 'Please provide all required fields including category'
+      message: 'Please provide all required fields: name, email, password, bio, gender, category'
     });
   }
 
@@ -157,24 +170,62 @@ const registerPsychic = asyncHandler(async (req, res) => {
       });
     }
 
-    // Create psychic with category
+    // Format abilities if provided as string
+    let formattedAbilities = [];
+    if (abilities) {
+      if (typeof abilities === 'string') {
+        formattedAbilities = abilities.split(',').map(a => a.trim()).filter(a => a);
+      } else if (Array.isArray(abilities)) {
+        formattedAbilities = abilities;
+      }
+    }
+
+    // Format languages if provided as string
+    let formattedLanguages = ['English']; // Default
+    if (languages) {
+      if (typeof languages === 'string') {
+        formattedLanguages = languages.split(',').map(l => l.trim()).filter(l => l);
+      } else if (Array.isArray(languages)) {
+        formattedLanguages = languages;
+      }
+    }
+
+    // Create psychic with all fields - ratePerMin set to default 1
     console.log("Creating psychic with category:", category);
     
     const psychic = await Psychic.create({
       name,
       email: email.toLowerCase(),
       password,
-      ratePerMin: parseFloat(ratePerMin),
+      ratePerMin: 1, // Default value of 1
       bio,
       gender,
       image: image || '',
-      category // Make sure this is included
+      category,
+      abilities: formattedAbilities,
+      location: location || '',
+      languages: formattedLanguages,
+      experience: parseInt(experience) || 0,
+      specialization: specialization || '',
+      // Default values for other fields
+      isVerified: false,
+      availability: true,
+      responseTime: 5,
+      status: 'offline',
+      currentSessions: 0,
+      maxSessions: 1
     });
 
     console.log("✅ Psychic created successfully:", {
       id: psychic._id,
       name: psychic.name,
-      category: psychic.category // This should now be visible
+      category: psychic.category,
+      ratePerMin: psychic.ratePerMin, // Should show 1
+      abilities: psychic.abilities,
+      location: psychic.location,
+      languages: psychic.languages,
+      experience: psychic.experience,
+      specialization: psychic.specialization
     });
 
     if (psychic) {
@@ -190,14 +241,13 @@ const registerPsychic = asyncHandler(async (req, res) => {
         path: '/'
       });
 
+      // Don't send password in response
+      const psychicResponse = psychic.toObject();
+      delete psychicResponse.password;
+
       res.status(201).json({
         success: true,
-        _id: psychic._id,
-        name: psychic.name,
-        email: psychic.email,
-        image: psychic.image,
-        category: psychic.category, // Include in response
-        isVerified: psychic.isVerified,
+        ...psychicResponse,
         token: token,
       });
     }
@@ -286,6 +336,349 @@ const loginPsychic = asyncHandler(async (req, res) => {
   });
 });
 
+
+const forgotPasswordPsychic = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  // Basic validation
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: 'Email is required'
+    });
+  }
+
+  try {
+    // Find psychic by email
+    const psychic = await Psychic.findOne({ email: email.toLowerCase() });
+    
+    // Always return same message for security (don't reveal if email exists)
+    if (!psychic) {
+      return res.status(200).json({
+        success: true,
+        message: 'If this email exists in our system, you will receive a password reset link'
+      });
+    }
+
+    // Check if psychic is verified
+    if (!psychic.isVerified) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account not verified. Please contact admin for assistance.'
+      });
+    }
+
+    // Generate reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    
+    // Hash token before saving to database
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    // Save to database
+    psychic.resetPasswordToken = hashedToken;
+    psychic.resetPasswordExpire = Date.now() + 30 * 60 * 1000; // 30 minutes
+    await psychic.save();
+
+    // Create reset URL
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/psychic/reset-password/${resetToken}`;
+
+    // Email content
+    const message = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e0e0e0; border-radius: 10px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #2B1B3F; margin-bottom: 10px;">Password Reset Request</h1>
+          <p style="color: #666; font-size: 16px;">Hi ${psychic.name},</p>
+        </div>
+        
+        <div style="background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+          <p style="color: #333; font-size: 16px; line-height: 1.6;">We received a request to reset your psychic account password. Click the button below to create a new password:</p>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background-color: #C9A24D; color: #2B1B3F; padding: 12px 30px; text-decoration: none; border-radius: 5px; font-weight: bold; font-size: 16px; display: inline-block;">Reset Password</a>
+          </div>
+          
+          <p style="color: #666; font-size: 14px; margin-top: 20px;">This link will expire in <strong>30 minutes</strong>.</p>
+          <p style="color: #666; font-size: 14px;">If you didn't request this, please ignore this email and your password will remain unchanged.</p>
+        </div>
+        
+        <div style="border-top: 1px solid #e0e0e0; padding-top: 20px; text-align: center;">
+          <p style="color: #999; font-size: 12px;">For security, never share this link with anyone.</p>
+          <p style="color: #999; font-size: 12px;">&copy; ${new Date().getFullYear()} Hecate Voyance. All rights reserved.</p>
+        </div>
+        
+        <!-- Fallback text link -->
+        <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin-top: 20px;">
+          <p style="color: #666; font-size: 13px; margin: 0;">Or copy and paste this link into your browser:</p>
+          <p style="color: #C9A24D; font-size: 13px; word-break: break-all; margin: 5px 0 0;">${resetUrl}</p>
+        </div>
+      </div>
+    `;
+
+    // Create transporter
+    const transporter = nodemailer.createTransport({
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      secure: process.env.SMTP_SECURE === 'true',
+      auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+
+    // Email options
+    const mailOptions = {
+      from: process.env.EMAIL_FROM || 'Hecate Voyance <Info@hecatevoyance.fr>',
+      to: psychic.email,
+      subject: 'Psychic Password Reset Request - Hecate Voyance',
+      html: message,
+      text: `Password Reset Request\n\nHi ${psychic.name},\n\nWe received a request to reset your password. Use this link to reset it:\n${resetUrl}\n\nThis link expires in 30 minutes.\n\nIf you didn't request this, please ignore this email.`
+    };
+
+    // Send email
+    await transporter.sendMail(mailOptions);
+
+    console.log(`📧 Password reset email sent to psychic: ${psychic.email}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset link has been sent to your email'
+    });
+
+  } catch (error) {
+    console.error('❌ Psychic forgot password error:', error);
+    
+    // Clear any reset token if there was an error
+    if (psychic) {
+      psychic.resetPasswordToken = undefined;
+      psychic.resetPasswordExpire = undefined;
+      await psychic.save();
+    }
+
+    res.status(500).json({
+      success: false,
+      message: 'Failed to send password reset email. Please try again later.'
+    });
+  }
+});
+
+
+const resetPasswordPsychic = asyncHandler(async (req, res) => {
+  const { resetToken } = req.params;
+  const { password, confirmPassword } = req.body;
+
+  // Validate inputs
+  if (!password || !confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please provide password and confirm password'
+    });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Passwords do not match'
+    });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'Password must be at least 6 characters long'
+    });
+  }
+
+  try {
+    // Hash the token from URL to compare with stored hash
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    // Find psychic with valid token
+    const psychic = await Psychic.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    });
+
+    if (!psychic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token. Please request a new one.'
+      });
+    }
+
+    // Update password
+    psychic.password = password; // Will be hashed by pre-save middleware
+    psychic.resetPasswordToken = undefined;
+    psychic.resetPasswordExpire = undefined;
+    await psychic.save();
+
+    // Generate new token for auto-login
+    const token = generateToken(psychic._id);
+
+    // Set cookie
+    res.cookie('psychicToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+
+    console.log(`✅ Password reset successful for psychic: ${psychic.email}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password reset successful. You can now login with your new password.',
+      token: token,
+      psychic: {
+        _id: psychic._id,
+        name: psychic.name,
+        email: psychic.email,
+        image: psychic.image,
+        isVerified: psychic.isVerified
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Psychic reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to reset password. Please try again.'
+    });
+  }
+});
+
+const updatePasswordPsychic = asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword, confirmPassword } = req.body;
+  const psychicId = req.psychic._id; // Assuming auth middleware sets req.psychic
+
+  // Validate inputs
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'Please provide current password, new password, and confirm password'
+    });
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).json({
+      success: false,
+      message: 'New passwords do not match'
+    });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({
+      success: false,
+      message: 'New password must be at least 6 characters long'
+    });
+  }
+
+  try {
+    // Find psychic with password field
+    const psychic = await Psychic.findById(psychicId).select('+password');
+
+    if (!psychic) {
+      return res.status(404).json({
+        success: false,
+        message: 'Psychic not found'
+      });
+    }
+
+    // Check current password
+    const isMatch = await psychic.matchPassword(currentPassword);
+    if (!isMatch) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Update password
+    psychic.password = newPassword; // Will be hashed by pre-save middleware
+    await psychic.save();
+
+    // Generate new token
+    const token = generateToken(psychic._id);
+
+    // Update cookie
+    res.cookie('psychicToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+      path: '/'
+    });
+
+    console.log(`🔐 Password updated for psychic: ${psychic.email}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Password updated successfully',
+      token: token
+    });
+
+  } catch (error) {
+    console.error('❌ Psychic update password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update password. Please try again.'
+    });
+  }
+});
+
+
+const verifyResetTokenPsychic = asyncHandler(async (req, res) => {
+  const { resetToken } = req.params;
+
+  try {
+    // Hash the token
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(resetToken)
+      .digest('hex');
+
+    // Find psychic with valid token
+    const psychic = await Psychic.findOne({
+      resetPasswordToken: hashedToken,
+      resetPasswordExpire: { $gt: Date.now() }
+    }).select('name email');
+
+    if (!psychic) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Token is valid',
+      psychic: {
+        name: psychic.name,
+        email: psychic.email
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Verify reset token error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to verify token'
+    });
+  }
+});
+
+
+
 // @desc    Get psychic profile
 const getPsychicProfile = asyncHandler(async (req, res) => {
   try {
@@ -323,7 +716,22 @@ const getPsychicProfile = asyncHandler(async (req, res) => {
 });
 
 // @desc    Logout psychic
+// @desc    Logout psychic & clear cookie
 const logoutPsychic = asyncHandler(async (req, res) => {
+  // Clear the psychicToken cookie
+  res.cookie('psychicToken', '', {
+    httpOnly: true,
+    expires: new Date(0), // Set expiration to the past
+    path: '/'
+  });
+  
+  // Also clear any other auth cookies if they exist
+  res.cookie('token', '', {
+    httpOnly: true,
+    expires: new Date(0),
+    path: '/'
+  });
+  
   res.json({
     success: true,
     message: 'Logged out successfully'
@@ -572,14 +980,18 @@ const getAllPsychics = asyncHandler(async (req, res) => {
       minRate,
       maxRate,
       search,
-      category // Add category filter
+      category,
+      all = 'false' // Add this parameter to control whether to return all psychics
     } = req.query;
 
     const filter = {};
     
+    // Only apply isVerified filter if explicitly provided
+    // Remove the default isVerified = true
     if (isVerified !== undefined) {
       filter.isVerified = isVerified === 'true';
     }
+    // Don't add default isVerified filter
     
     if (gender) {
       filter.gender = gender;
@@ -606,17 +1018,40 @@ const getAllPsychics = asyncHandler(async (req, res) => {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
         { bio: { $regex: search, $options: 'i' } },
-        { category: { $regex: search, $options: 'i' } }, // Search in category too
+        { category: { $regex: search, $options: 'i' } },
         { specialization: { $regex: search, $options: 'i' } }
       ];
     }
 
-    const skip = (Number(page) - 1) * Number(limit);
     const sort = {};
     sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
 
-    const psychics = await Psychic.find(filter)
-      .select('name bio ratePerMin gender isVerified image category createdAt updatedAt specialization abilities languages experience') // Add category and other useful fields
+    let psychicsQuery = Psychic.find(filter)
+      .select('name bio ratePerMin gender isVerified image category createdAt updatedAt specialization abilities languages experience status lastSeen');
+
+    // Check if we need to return all psychics (no pagination)
+    if (all === 'true') {
+      // Return all psychics without pagination
+      const psychics = await psychicsQuery.sort(sort);
+      
+      // Add default image if missing
+      const psychicsWithImages = psychics.map(psychic => ({
+        ...psychic.toObject(),
+        image: psychic.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`,
+        category: psychic.category || 'Reading'
+      }));
+
+      return res.json({
+        success: true,
+        count: psychics.length,
+        psychics: psychicsWithImages
+      });
+    }
+
+    // Otherwise, apply pagination
+    const skip = (Number(page) - 1) * Number(limit);
+    
+    const psychics = await psychicsQuery
       .sort(sort)
       .skip(skip)
       .limit(Number(limit));
@@ -625,8 +1060,7 @@ const getAllPsychics = asyncHandler(async (req, res) => {
     const psychicsWithImages = psychics.map(psychic => ({
       ...psychic.toObject(),
       image: psychic.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`,
-      // Ensure category is included even if null/undefined
-      category: psychic.category || 'Reading' // Default category if not set
+      category: psychic.category || 'Reading'
     }));
 
     const total = await Psychic.countDocuments(filter);
@@ -1314,6 +1748,7 @@ const getPsychicChatStats = asyncHandler(async (req, res) => {
 });
 
 
+
 const adminCreatePsychic = asyncHandler(async (req, res) => {
   try {
     const {
@@ -1323,7 +1758,8 @@ const adminCreatePsychic = asyncHandler(async (req, res) => {
       ratePerMin,
       bio,
       gender,
-      image, // Already included
+      category, // ADD THIS
+      image,
       abilities,
       location,
       languages,
@@ -1335,10 +1771,10 @@ const adminCreatePsychic = asyncHandler(async (req, res) => {
     } = req.body;
 
     // Validate required fields
-    if (!name || !email || !password || !ratePerMin || !bio || !gender) {
+    if (!name || !email || !password || !ratePerMin || !bio || !gender || !category) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields: name, email, password, ratePerMin, bio, gender'
+        message: 'Please provide all required fields: name, email, password, ratePerMin, bio, gender, category'
       });
     }
 
@@ -1379,7 +1815,8 @@ const adminCreatePsychic = asyncHandler(async (req, res) => {
       ratePerMin: parseFloat(ratePerMin),
       bio,
       gender,
-      image: image || '', // Ensure image is saved
+      category, // ADD THIS
+      image: image || '',
       abilities: formattedAbilities,
       location: location || '',
       languages: formattedLanguages,
@@ -1912,6 +2349,10 @@ module.exports = {
    updatePsychicStatus,
   getMyStatus,
   getPsychicStatus,
+  forgotPasswordPsychic,
+  resetPasswordPsychic,
+  updatePasswordPsychic,
+  verifyResetTokenPsychic,
   getPsychicStatuses,
   getPsychicStatusesFast, // Add this
   setIoInstance,

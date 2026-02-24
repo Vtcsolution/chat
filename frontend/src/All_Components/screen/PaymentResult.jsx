@@ -15,104 +15,107 @@ export default function PaymentResult() {
   const { user } = useAuth(); // Only get user, we'll handle refresh separately
 
   useEffect(() => {
-    const checkPaymentStatus = async (paymentId = null, currentRetryCount = 0) => {
-      try {
-        // Get payment ID from various sources
-        let paymentIdToCheck = paymentId || 
-                              searchParams.get('payment_id') || 
-                              searchParams.get('payment_intent') || 
-                              searchParams.get('session_id') ||
-                              searchParams.get('id') ||
-                              localStorage.getItem('lastPaymentId') ||
-                              localStorage.getItem('paymentId');
+const checkPaymentStatus = async (paymentId = null, currentRetryCount = 0) => {
+  try {
+    // Get payment ID from various sources
+    let paymentIdToCheck = paymentId || 
+                          searchParams.get('payment_id') || 
+                          searchParams.get('payment_intent') || 
+                          searchParams.get('session_id') ||
+                          searchParams.get('id');
+    
+    // If no paymentId in URL, check localStorage for the most recent one
+    if (!paymentIdToCheck) {
+      paymentIdToCheck = localStorage.getItem('lastPaymentId');
+    }
 
-        console.log('PaymentResult: Checking payment status', { 
-          paymentId: paymentIdToCheck,
-          retryCount: currentRetryCount
-        });
+    console.log('PaymentResult: Checking payment status', { 
+      paymentId: paymentIdToCheck,
+      retryCount: currentRetryCount
+    });
 
-        if (!paymentIdToCheck) {
-          throw new Error('Payment reference not found');
-        }
+    if (!paymentIdToCheck) {
+      throw new Error('Payment reference not found');
+    }
 
-        // Check with our backend
-        const response = await axios.get(
-          `${import.meta.env.VITE_BASE_URL}/api/payments/status/${paymentIdToCheck}`,
-          { 
-            withCredentials: true,
-            headers: {
-              'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
-            }
-          }
-        );
-
-        console.log('PaymentResult: Status response', response.data);
-
-        setPaymentData(response.data);
-        
-        if (response.data.status === 'paid') {
-          setStatus('success');
-          
-          // Clear stored payment data
-          localStorage.removeItem('lastPaymentId');
-          localStorage.removeItem('paymentId');
-          localStorage.removeItem('paymentIntent');
-          localStorage.removeItem('paymentAmount');
-          
-          // Refresh user wallet balance
-          await refreshUserWallet();
-          
-          // Track Purchase event for TikTok Pixel
-          if (window.ttq) {
-            window.ttq.track('Purchase', {
-              content_id: paymentIdToCheck,
-              value: response.data.amount || 0.00,
-              currency: 'USD',
-              credits_added: response.data.credits || response.data.creditsAdded,
-            });
-          }
-          
-          // Show success toast
-          toast.success('Payment successful! Credits added to your account.');
-          
-        } else if (response.data.status === 'pending' || response.data.status === 'processing') {
-          // Retry after delay if we haven't exceeded max retries
-          if (currentRetryCount < maxRetries) {
-            setTimeout(() => {
-              checkPaymentStatus(paymentIdToCheck, currentRetryCount + 1);
-            }, 2000); // Retry every 2 seconds
-          } else {
-            setStatus('failed');
-            toast.error('Payment is taking longer than expected. Please check your account.');
-          }
-        } else {
-          setStatus('failed');
-          toast.error('Payment failed or was canceled');
-        }
-      } catch (error) {
-        console.error('Payment verification failed:', {
-          error: error.message,
-          response: error.response?.data,
-          status: error.response?.status
-        });
-        
-        if (currentRetryCount < maxRetries) {
-          // Retry on network errors
-          setTimeout(() => {
-            checkPaymentStatus(null, currentRetryCount + 1);
-          }, 2000);
-        } else {
-          setStatus('failed');
-          setPaymentData({
-            error: error.response?.data?.error || 
-                   error.response?.data?.message || 
-                   error.message || 
-                   'Payment verification failed'
-          });
-          toast.error('Payment verification failed');
+    // Check with our backend
+    const response = await axios.get(
+      `${import.meta.env.VITE_BASE_URL}/api/payments/status/${paymentIdToCheck}`,
+      { 
+        withCredentials: true,
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('accessToken')}`
         }
       }
-    };
+    );
+
+    console.log('PaymentResult: Status response', response.data);
+
+    setPaymentData(response.data);
+    
+    if (response.data.status === 'paid') {
+      setStatus('success');
+      
+      // Clear ONLY this payment from storage, not all payments
+      if (localStorage.getItem('lastPaymentId') === paymentIdToCheck) {
+        localStorage.removeItem('lastPaymentId');
+      }
+      
+      // Refresh user wallet balance
+      await refreshUserWallet();
+      
+      // Track Purchase event for TikTok Pixel
+      if (window.ttq) {
+        window.ttq.track('Purchase', {
+          content_id: paymentIdToCheck,
+          value: response.data.amount || 0.00,
+          currency: 'USD',
+          credits_added: response.data.credits || response.data.creditsAdded,
+        });
+      }
+      
+      // Show success toast
+      toast.success('Payment successful! Credits added to your account.');
+      
+    } else if (response.data.status === 'pending' || response.data.status === 'processing') {
+      // Retry after delay if we haven't exceeded max retries
+      if (currentRetryCount < maxRetries) {
+        setTimeout(() => {
+          checkPaymentStatus(paymentIdToCheck, currentRetryCount + 1);
+        }, 2000);
+      } else {
+        setStatus('pending');
+        // Don't show error for pending status
+        toast.info('Payment is still processing. You can check back later.');
+      }
+    } else {
+      setStatus('failed');
+      toast.error('Payment failed or was canceled');
+    }
+  } catch (error) {
+    console.error('Payment verification failed:', {
+      error: error.message,
+      response: error.response?.data,
+      status: error.response?.status
+    });
+    
+    if (currentRetryCount < maxRetries) {
+      // Retry on network errors
+      setTimeout(() => {
+        checkPaymentStatus(null, currentRetryCount + 1);
+      }, 2000);
+    } else {
+      setStatus('failed');
+      setPaymentData({
+        error: error.response?.data?.error || 
+               error.response?.data?.message || 
+               error.message || 
+               'Payment verification failed'
+      });
+      toast.error('Payment verification failed');
+    }
+  }
+};
 
     // Start checking payment status
     checkPaymentStatus(null, 0);

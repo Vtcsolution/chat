@@ -11,7 +11,7 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Loader2, CheckCircle, Gift, X, Sparkles, User, Mail, Lock, Shield, Eye, EyeOff } from 'lucide-react';
+import { Loader2, CheckCircle, Gift, Sparkles, User, Mail, Lock, Shield, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import axios from 'axios';
 
@@ -33,8 +33,6 @@ export default function Signup() {
   const navigate = useNavigate();
   const hasInteracted = useRef(false);
   const [registrationSuccess, setRegistrationSuccess] = useState(false);
-  const [countdown, setCountdown] = useState(10);
-  const [showSuccess, setShowSuccess] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
@@ -48,31 +46,31 @@ export default function Signup() {
   const [formErrors, setFormErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
 
-  useEffect(() => {
-    let timer;
-    if (registrationSuccess && showSuccess) {
-      setCountdown(10);
-      timer = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 1) {
-            clearInterval(timer);
-            navigate("/");
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => {
-      if (timer) clearInterval(timer);
-    };
-  }, [registrationSuccess, showSuccess, navigate]);
-
+  // Redirect to home when registration is successful
   useEffect(() => {
     if (registrationSuccess) {
-      setShowSuccess(true);
+      // Show success toast
+      toast.success('Account created successfully! 🎉', {
+        duration: 3000,
+        description: 'You received 2 FREE credits as a welcome gift!',
+      });
+      
+      // Small delay to show the toast before redirect
+      setTimeout(() => {
+        navigate("/");
+      }, 1500);
     }
-  }, [registrationSuccess]);
+  }, [registrationSuccess, navigate]);
+
+  // Redirect if user is already logged in
+  useEffect(() => {
+    if (user && !error && !registrationSuccess) {
+      navigate("/");
+    }
+    if (error) {
+      toast.error(error);
+    }
+  }, [user, error, navigate, registrationSuccess]);
 
   const handleChange = (e) => {
     const { id, value } = e.target;
@@ -127,9 +125,6 @@ export default function Signup() {
           });
         }
 
-        toast.success('Account created successfully!', {
-          duration: 5000,
-        });
         setRegistrationSuccess(true);
         
         setFormData({
@@ -148,20 +143,6 @@ export default function Signup() {
       setIsLoading(false);
     }
   };
-
-  const closeSuccessMessage = () => {
-    setShowSuccess(false);
-    navigate("/");
-  };
-
-  useEffect(() => {
-    if (user && !error && !registrationSuccess) {
-      navigate("/");
-    }
-    if (error) {
-      toast.error(error);
-    }
-  }, [user, error, navigate, registrationSuccess]);
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden"
@@ -217,35 +198,6 @@ export default function Signup() {
           </CardHeader>
           
           <CardContent className="space-y-6 pt-6">
-            {/* Inline Success Message */}
-            {registrationSuccess && !showSuccess && (
-              <div className="bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-emerald-300 rounded-xl p-4 shadow-md animate-pulse"
-                style={{ borderColor: colors.success + '50' }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-6 w-6" style={{ color: colors.success }} />
-                    <div>
-                      <h3 className="font-bold" style={{ color: colors.primary }}>Account Created! 🎉</h3>
-                      <p className="text-sm" style={{ color: colors.bgLight }}>
-                        Click here to view your 2 free credits
-                      </p>
-                    </div>
-                  </div>
-                  <Button
-                    onClick={() => setShowSuccess(true)}
-                    variant="outline"
-                    size="sm"
-                    style={{ 
-                      borderColor: colors.secondary,
-                      color: colors.secondary
-                    }}
-                  >
-                    Details
-                  </Button>
-                </div>
-              </div>
-            )}
-
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Username Field */}
               <div className="space-y-3">
@@ -447,7 +399,7 @@ export default function Signup() {
                 ) : registrationSuccess ? (
                   <>
                     <CheckCircle className="h-5 w-5 mr-2" />
-                    Account Created!
+                    Redirecting...
                   </>
                 ) : (
                   'Create Account'
@@ -469,7 +421,7 @@ export default function Signup() {
                 </Link>
               </p>
 
-              {/* Credit Info */}
+              {/* Credit Info - Kept as info box, not modal */}
               <div className="p-4 rounded-xl border"
                 style={{ 
                   backgroundColor: colors.secondary + '10',
@@ -496,121 +448,10 @@ export default function Signup() {
         {/* Footer */}
         <div className="text-center mt-8">
           <p className="text-xs" style={{ color: colors.bgLight }}>
-            © {new Date().getFullYear()} Spiritual Chat. All rights reserved.
+            © {new Date().getFullYear()} HecateVoyance. All rights reserved.
           </p>
         </div>
       </div>
-
-      {/* Large Success Overlay Modal */}
-      {showSuccess && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 animate-in zoom-in-95 duration-300">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-3">
-                <div style={{ backgroundColor: colors.success + '20', padding: '8px', borderRadius: '50%' }}>
-                  <CheckCircle className="h-8 w-8" style={{ color: colors.success }} />
-                </div>
-                <h2 className="text-2xl font-bold" style={{ color: colors.primary }}>Welcome! 🎉</h2>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={closeSuccessMessage}
-                className="h-8 w-8 p-0 hover:bg-gray-100"
-                style={{ color: colors.bgLight }}
-              >
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="rounded-xl border p-4"
-                style={{ 
-                  backgroundColor: colors.secondary + '10',
-                  borderColor: colors.secondary + '30'
-                }}>
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="p-2 rounded-full"
-                    style={{ backgroundColor: colors.secondary + '20' }}>
-                    <Gift className="h-6 w-6" style={{ color: colors.secondary }} />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg" style={{ color: colors.primary }}>
-                      You received 2 FREE credits! 🎁
-                    </h3>
-                  </div>
-                </div>
-                <p className="mb-2" style={{ color: colors.bgLight }}>
-                  <strong>This is your welcome gift!</strong> Start chatting with one of our coaches.
-                </p>
-              </div>
-
-              <div className="rounded-lg p-4"
-                style={{ 
-                  backgroundColor: colors.primary + '05',
-                  color: colors.bgLight
-                }}>
-                <h4 className="font-semibold mb-2" style={{ color: colors.primary }}>What you can do now:</h4>
-                <ul className="space-y-2 text-sm">
-                  <li className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.success }}></div>
-                    <span>Choose a coach that fits you</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.success }}></div>
-                    <span>Start a conversation (first 2 minutes free)</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <div className="h-2 w-2 rounded-full" style={{ backgroundColor: colors.success }}></div>
-                    <span>Discover your personal insights</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div className="flex flex-col gap-3">
-                <Button
-                  onClick={() => navigate("/")}
-                  className="w-full font-bold py-3 text-lg transition-all duration-300 hover:scale-[1.02]"
-                  size="lg"
-                  style={{ 
-                    backgroundColor: colors.secondary,
-                    color: colors.primary
-                  }}
-                >
-                  🚀 Go to Homepage
-                </Button>
-                
-                <Button
-                  onClick={() => navigate("/aura-advisors")}
-                  variant="outline"
-                  className="w-full transition-all duration-300 hover:scale-[1.02]"
-                  style={{ 
-                    borderColor: colors.secondary,
-                    color: colors.secondary
-                  }}
-                >
-                  👁️ View Coaches Directly
-                </Button>
-              </div>
-
-              <div className="text-center pt-4 border-t" style={{ borderColor: colors.secondary + '20' }}>
-                <p className="text-sm mb-2" style={{ color: colors.bgLight }}>
-                  Auto redirect in <span className="font-bold" style={{ color: colors.primary }}>{countdown} seconds</span>
-                </p>
-                <div className="w-full h-2 rounded-full" style={{ backgroundColor: colors.primary + '10' }}>
-                  <div 
-                    className="h-2 rounded-full transition-all duration-1000 ease-linear"
-                    style={{ 
-                      backgroundColor: colors.success,
-                      width: `${(countdown / 10) * 100}%`
-                    }}
-                  ></div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

@@ -146,7 +146,8 @@ const statsRoutes = require('./routes/statsRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
 const feedback = require('./routes/feedbackRoutes');
 const userSessionRoutes = require('./routes/CallSession/userSessionRoutes');
-
+const psychicPaymentRoutes = require("./routes/CallSession/psychicPaymentRoutes");
+const PsychicPaidRoutes = require("./routes/CallSession/PsychicPaidRoutes")
 // API Routes (always included)
 app.use('/api/human-psychics', psychicRoutes);
 app.use("/api/humanchat", chatRoute);
@@ -164,6 +165,8 @@ app.use('/api', timerRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api', feedback);
+app.use('/api/admin/payments', psychicPaymentRoutes);
+app.use('/api/psychic/payments', PsychicPaidRoutes);
 app.use('/api/usersession', userSessionRoutes);
 
 app.use('/api/admindata', admindataRoutes);

@@ -25,7 +25,11 @@ import {
   FaExclamationTriangle,
   FaCrown,
   FaPhone,
-  FaComment
+  FaComment,
+  FaCreditCard,
+  FaCheckCircle,
+  FaTimesCircle,
+  FaReceipt
 } from "react-icons/fa";
 
 // Color scheme
@@ -85,6 +89,125 @@ const StatCard = ({ title, value, icon: Icon, color, loading, change = null, sub
   </div>
 );
 
+// Payment Card Component
+// Payment Card Component - UPDATED to match your model
+const PaymentCard = ({ payment }) => {
+  const formatDate = (dateString) => {
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  // Calculate your earnings (25% of total)
+  const yourEarnings = payment.amount || 0;
+
+  return (
+    <div className="bg-white rounded-lg border p-4 hover:shadow-md transition-all duration-300"
+      style={{ borderColor: colors.primary + '20' }}>
+      <div className="flex justify-between items-start">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-full" style={{ backgroundColor: colors.success + '20' }}>
+            <FaCheckCircle className="text-lg" style={{ color: colors.success }} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-bold" style={{ color: colors.primary }}>Payment Received</p>
+              <span className="text-xs px-2 py-1 rounded-full" style={{ 
+                backgroundColor: colors.success + '10',
+                color: colors.success
+              }}>
+                {payment.paymentMethod?.replace('_', ' ')}
+              </span>
+            </div>
+            <p className="text-sm" style={{ color: colors.primary + '70' }}>
+              Ref: {payment.paymentId}
+            </p>
+          </div>
+        </div>
+        <div className="text-right">
+          <p className="text-xl font-bold" style={{ color: colors.success }}>
+            +{formatCurrency(payment.amount)}
+          </p>
+          <p className="text-xs" style={{ color: colors.primary + '60' }}>
+            {formatDate(payment.paymentDate)}
+          </p>
+        </div>
+      </div>
+      
+      {/* Payment Stats - Using your model structure */}
+      <div className="mt-3 grid grid-cols-3 gap-2 pt-3 border-t text-sm"
+        style={{ borderColor: colors.primary + '10' }}>
+        <div>
+          <p className="text-xs" style={{ color: colors.primary + '60' }}>Your Earnings</p>
+          <p className="font-bold" style={{ color: colors.success }}>
+            {formatCurrency(payment.amount)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs" style={{ color: colors.primary + '60' }}>Total Earnings</p>
+          <p className="font-bold" style={{ color: colors.primary }}>
+            {formatCurrency(payment.totalEarnings || 0)}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs" style={{ color: colors.primary + '60' }}>Platform Fee</p>
+          <p className="font-bold" style={{ color: colors.warning }}>
+            {formatCurrency(payment.platformCommission || 0)}
+          </p>
+        </div>
+      </div>
+      
+      {/* Before/After Stats */}
+      {payment.beforePaymentStats && payment.afterPaymentStats && (
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: colors.primary + '10' }}>
+          <div className="grid grid-cols-2 gap-4 text-xs">
+            <div>
+              <p className="font-medium mb-1" style={{ color: colors.primary + '70' }}>Before Payment</p>
+              <p>Paid: {formatCurrency(payment.beforePaymentStats.paidAmount || 0)}</p>
+              <p>Pending: {formatCurrency(payment.beforePaymentStats.pendingAmount || 0)}</p>
+            </div>
+            <div>
+              <p className="font-medium mb-1" style={{ color: colors.primary + '70' }}>After Payment</p>
+              <p>Paid: {formatCurrency(payment.afterPaymentStats.paidAmount || 0)}</p>
+              <p>Pending: {formatCurrency(payment.afterPaymentStats.pendingAmount || 0)}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Sessions in this payment */}
+      {payment.earningsBreakdown?.sessionsBreakdown?.length > 0 && (
+        <div className="mt-3 pt-3 border-t" style={{ borderColor: colors.primary + '10' }}>
+          <p className="text-xs font-medium mb-2" style={{ color: colors.primary + '70' }}>
+            Sessions included:
+          </p>
+          <div className="space-y-2">
+            {payment.earningsBreakdown.sessionsBreakdown.map((session, idx) => {
+              const sessionColor = session.sessionType === 'ActiveCallSession' ? colors.call : colors.chat;
+              return (
+                <div key={idx} className="flex justify-between items-center text-xs pl-2 border-l-2"
+                  style={{ borderColor: sessionColor }}>
+                  <span style={{ color: colors.primary }}>
+                    {session.sessionType === 'ActiveCallSession' ? '📞 Call' : '💬 Chat'} • 
+                    {new Date(session.date).toLocaleDateString()} • {session.duration} min
+                  </span>
+                  <span className="font-bold" style={{ color: colors.success }}>
+                    {formatCurrency(session.amount)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Debug Panel Component
 const DebugPanel = ({ apiResponse, loading }) => {
   const [showDebug, setShowDebug] = useState(false);
@@ -139,12 +262,57 @@ export default function PsychicDashboard() {
   
   // State variables
   const [dashboardData, setDashboardData] = useState({
-    today: { earnings: 0, chatEarnings: 0, callEarnings: 0, sessions: 0, chatSessions: 0, callSessions: 0 },
-    week: { earnings: 0, chatEarnings: 0, callEarnings: 0, sessions: 0, chatSessions: 0, callSessions: 0 },
-    month: { earnings: 0, chatEarnings: 0, callEarnings: 0, sessions: 0, chatSessions: 0, callSessions: 0 },
-    allTime: { earnings: 0, chatEarnings: 0, callEarnings: 0, sessions: 0, chatSessions: 0, callSessions: 0, totalUsers: 0 },
+    today: { 
+      totalPaid: 0, 
+      psychicEarnings: 0, 
+      platformEarnings: 0,
+      chatEarnings: 0, 
+      callEarnings: 0, 
+      sessions: 0, 
+      chatSessions: 0, 
+      callSessions: 0 
+    },
+    week: { 
+      totalPaid: 0, 
+      psychicEarnings: 0, 
+      platformEarnings: 0,
+      chatEarnings: 0, 
+      callEarnings: 0, 
+      sessions: 0, 
+      chatSessions: 0, 
+      callSessions: 0 
+    },
+    month: { 
+      totalPaid: 0, 
+      psychicEarnings: 0, 
+      platformEarnings: 0,
+      chatEarnings: 0, 
+      callEarnings: 0, 
+      sessions: 0, 
+      chatSessions: 0, 
+      callSessions: 0 
+    },
+    allTime: { 
+      totalPaid: 0, 
+      psychicEarnings: 0, 
+      platformEarnings: 0,
+      chatEarnings: 0, 
+      callEarnings: 0, 
+      sessions: 0, 
+      chatSessions: 0, 
+      callSessions: 0, 
+      totalUsers: 0 
+    },
     userBreakdown: [],
-    recentSessions: []
+    recentSessions: [],
+    paymentHistory: [], // New: Store payment history
+    paymentSummary: {   // New: Payment summary
+      totalEarnings: 0,
+      totalPaid: 0,
+      pendingAmount: 0,
+      totalPayments: 0
+    },
+    splitRatio: { psychic: 0.25, platform: 0.75 }
   });
   const [apiResponse, setApiResponse] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -194,53 +362,108 @@ export default function PsychicDashboard() {
     }
   }, [navigate]);
 
-  // Fetch dashboard data
-  const fetchDashboardData = async () => {
-    try {
-      setError(null);
-      
-      const response = await api.current.get('/api/chatrequest/psychic/earnings');
-      
-      if (response.data && response.data.success) {
-        setApiResponse(response.data);
-        const processedData = processApiResponse(response.data);
-        setDashboardData(processedData);
-        return { success: true };
-      } else {
-        throw new Error('Invalid response format');
-      }
-      
-    } catch (err) {
-      console.error('Error fetching dashboard data:', err);
-      
-      // Use mock data as fallback
-      const mockData = createMockData();
-      setDashboardData(mockData);
-      
-      let errorMessage = 'Using demo data - ' + (err.message || 'Failed to fetch data');
-      if (err.response?.status === 401) {
-        errorMessage = 'Session expired. Please login again.';
-        localStorage.removeItem('psychicToken');
-        localStorage.removeItem('psychicData');
-        setTimeout(() => navigate('/psychic/login'), 2000);
-      }
-      
-      setError(errorMessage);
-      return { success: false };
-    }
-  };
+  // Fetch payment history
+ // Fetch payment history - UPDATED to use psychic endpoint
+const fetchPaymentHistory = async () => {
+  try {
+    const psychicId = psychic?._id || localStorage.getItem('psychicId');
+    if (!psychicId) return null;
 
-  // Process API response
-  const processApiResponse = (response) => {
+    // CHANGE THIS: Use the psychic endpoint instead of admin endpoint
+    const response = await api.current.get('/api/psychic/payments/history');
+    
+    if (response.data && response.data.success) {
+      console.log('✅ Payment history fetched:', response.data.data);
+      return response.data.data.payments || [];
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching payment history:', error);
+    if (error.response) {
+      console.error('Error response:', error.response.data);
+      console.error('Error status:', error.response.status);
+    }
+    return [];
+  }
+};
+
+// Also add a function to fetch payment summary
+const fetchPaymentSummary = async () => {
+  try {
+    const response = await api.current.get('/api/psychic/payments/summary');
+    
+    if (response.data && response.data.success) {
+      console.log('✅ Payment summary fetched:', response.data.data);
+      return response.data.data.summary;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error fetching payment summary:', error);
+    return null;
+  }
+};
+
+  // Fetch dashboard data
+  // Fetch dashboard data - UPDATED
+const fetchDashboardData = async () => {
+  try {
+    setError(null);
+    
+    // Fetch earnings data
+    const earningsResponse = await api.current.get('/api/chatrequest/psychic/earnings');
+    
+    // Fetch payment history and summary from psychic endpoints
+    const [paymentHistory, paymentSummary] = await Promise.all([
+      fetchPaymentHistory(),
+      fetchPaymentSummary()
+    ]);
+    
+    if (earningsResponse.data && earningsResponse.data.success) {
+      setApiResponse(earningsResponse.data);
+      const processedData = processApiResponse(earningsResponse.data, paymentHistory, paymentSummary);
+      setDashboardData(processedData);
+      return { success: true };
+    } else {
+      throw new Error('Invalid response format');
+    }
+    
+  } catch (err) {
+    console.error('Error fetching dashboard data:', err);
+    
+    // Use mock data as fallback
+    const mockData = createMockData();
+    setDashboardData(mockData);
+    
+    let errorMessage = 'Using demo data - ' + (err.message || 'Failed to fetch data');
+    if (err.response?.status === 401) {
+      errorMessage = 'Session expired. Please login again.';
+      localStorage.removeItem('psychicToken');
+      localStorage.removeItem('psychicData');
+      setTimeout(() => navigate('/psychic/login'), 2000);
+    }
+    
+    setError(errorMessage);
+    return { success: false };
+  }
+};
+  // Process API response - UPDATED to include payment history
+  const processApiResponse = (response, paymentHistory = []) => {
     const d = response.data;
     
     if (!d || !d.summary) {
       return createMockData();
     }
     
+    // Calculate payment summary from payment history
+    const totalEarnings = d.summary.allTime?.totalPaid || 0;
+    const totalPaid = paymentHistory.reduce((sum, p) => sum + (p.amount || 0), 0);
+    const pendingAmount = totalEarnings * 0.25 - totalPaid; // 25% of total earnings minus paid
+    
     return {
       today: {
-        earnings: d.summary.daily?.earnings || 0,
+        totalPaid: d.summary.daily?.totalPaid || 0,
+        psychicEarnings: d.summary.daily?.psychicEarnings || 0,
+        platformEarnings: d.summary.daily?.platformEarnings || 0,
         chatEarnings: d.summary.daily?.chatEarnings || 0,
         callEarnings: d.summary.daily?.callEarnings || 0,
         sessions: d.summary.daily?.sessions || 0,
@@ -248,7 +471,9 @@ export default function PsychicDashboard() {
         callSessions: d.summary.daily?.callSessions || 0
       },
       week: {
-        earnings: d.summary.weekly?.earnings || 0,
+        totalPaid: d.summary.weekly?.totalPaid || 0,
+        psychicEarnings: d.summary.weekly?.psychicEarnings || 0,
+        platformEarnings: d.summary.weekly?.platformEarnings || 0,
         chatEarnings: d.summary.weekly?.chatEarnings || 0,
         callEarnings: d.summary.weekly?.callEarnings || 0,
         sessions: d.summary.weekly?.sessions || 0,
@@ -256,7 +481,9 @@ export default function PsychicDashboard() {
         callSessions: d.summary.weekly?.callSessions || 0
       },
       month: {
-        earnings: d.summary.monthly?.earnings || 0,
+        totalPaid: d.summary.monthly?.totalPaid || 0,
+        psychicEarnings: d.summary.monthly?.psychicEarnings || 0,
+        platformEarnings: d.summary.monthly?.platformEarnings || 0,
         chatEarnings: d.summary.monthly?.chatEarnings || 0,
         callEarnings: d.summary.monthly?.callEarnings || 0,
         sessions: d.summary.monthly?.sessions || 0,
@@ -264,7 +491,9 @@ export default function PsychicDashboard() {
         callSessions: d.summary.monthly?.callSessions || 0
       },
       allTime: {
-        earnings: d.summary.allTime?.earnings || 0,
+        totalPaid: d.summary.allTime?.totalPaid || 0,
+        psychicEarnings: d.summary.allTime?.psychicEarnings || 0,
+        platformEarnings: d.summary.allTime?.platformEarnings || 0,
         chatEarnings: d.summary.allTime?.chatEarnings || 0,
         callEarnings: d.summary.allTime?.callEarnings || 0,
         sessions: d.summary.allTime?.sessions || 0,
@@ -272,19 +501,71 @@ export default function PsychicDashboard() {
         callSessions: d.summary.allTime?.callSessions || 0,
         totalUsers: d.summary.allTime?.totalUsers || 0
       },
-      userBreakdown: d.userBreakdown || [],
+      userBreakdown: (d.userBreakdown || []).map(user => ({
+        ...user,
+        totalEarnings: user.psychicEarnings || 0,
+        chatEarnings: user.chatPaid ? user.chatPaid * 0.25 : 0,
+        callEarnings: user.callPaid ? user.callPaid * 0.25 : 0,
+        totalSessions: user.totalSessions || 0,
+        chatSessions: user.chatSessions || 0,
+        callSessions: user.callSessions || 0,
+        totalTimeMinutes: user.totalTimeMinutes || 0,
+        avgEarningsPerSession: user.avgEarningsPerSession || 0
+      })),
       recentSessions: (d.recentSessions || []).map(s => ({
         ...s,
-        type: s.type || (s.totalCreditsUsed ? 'call' : 'chat')
-      }))
+        type: s.type || (s.totalCreditsUsed ? 'call' : 'chat'),
+        amount: s.psychicEarnings || 0
+      })),
+      paymentHistory: paymentHistory || [], // Add payment history
+      paymentSummary: { // Add payment summary
+        totalEarnings: d.summary.allTime?.totalPaid || 0,
+        totalPaid,
+        pendingAmount: Math.max(0, pendingAmount),
+        totalPayments: paymentHistory.length
+      },
+      splitRatio: d.splitRatio || { psychic: 0.25, platform: 0.75 }
     };
   };
 
-  // Create mock data
+  // Create mock data - UPDATED to include payment history
   const createMockData = () => {
+    const mockPaymentHistory = [
+      {
+        _id: '1',
+        amount: 1.00,
+        paymentId: 'dsfkjsdflkdjsfklsdfdsfdsfds',
+        paymentMethod: 'paypal',
+        paymentDate: new Date().toISOString(),
+        beforePaymentStats: {
+          totalEarnings: 7.37,
+          paidAmount: 0,
+          pendingAmount: 1.84
+        },
+        afterPaymentStats: {
+          totalEarnings: 7.37,
+          paidAmount: 1,
+          pendingAmount: 0.84
+        },
+        earningsBreakdown: {
+          sessionsBreakdown: [
+            {
+              sessionId: '1',
+              sessionType: 'ChatRequest',
+              amount: 1,
+              date: new Date().toISOString(),
+              duration: 2
+            }
+          ]
+        }
+      }
+    ];
+
     return {
       today: {
-        earnings: 6.65,
+        totalPaid: 6.65,
+        psychicEarnings: 1.66,
+        platformEarnings: 4.99,
         chatEarnings: 0.65,
         callEarnings: 6.00,
         sessions: 2,
@@ -292,7 +573,9 @@ export default function PsychicDashboard() {
         callSessions: 1
       },
       week: {
-        earnings: 6.65,
+        totalPaid: 6.65,
+        psychicEarnings: 1.66,
+        platformEarnings: 4.99,
         chatEarnings: 0.65,
         callEarnings: 6.00,
         sessions: 2,
@@ -300,7 +583,9 @@ export default function PsychicDashboard() {
         callSessions: 1
       },
       month: {
-        earnings: 6.65,
+        totalPaid: 6.65,
+        psychicEarnings: 1.66,
+        platformEarnings: 4.99,
         chatEarnings: 0.65,
         callEarnings: 6.00,
         sessions: 2,
@@ -308,45 +593,55 @@ export default function PsychicDashboard() {
         callSessions: 1
       },
       allTime: {
-        earnings: 6.65,
-        chatEarnings: 0.65,
-        callEarnings: 6.00,
-        sessions: 2,
-        chatSessions: 1,
+        totalPaid: 7.37,
+        psychicEarnings: 1.84,
+        platformEarnings: 5.53,
+        chatEarnings: 7.37,
+        callEarnings: 0,
+        sessions: 3,
+        chatSessions: 2,
         callSessions: 1,
         totalUsers: 1
       },
       userBreakdown: [
         {
-          user: { _id: '1', firstName: 'Zia', lastName: '', email: 'zia@gmail.com' },
-          totalEarnings: 6.65,
-          chatEarnings: 0.65,
-          callEarnings: 6.00,
-          totalSessions: 2,
-          chatSessions: 1,
+          user: { _id: '1', username: 'Zia', email: 'zia@gmail.com' },
+          totalEarnings: 1.84,
+          psychicEarnings: 1.84,
+          platformEarnings: 5.53,
+          totalPaid: 7.37,
+          chatPaid: 7.37,
+          callPaid: 0,
+          chatEarnings: 1.84,
+          callEarnings: 0,
+          totalSessions: 3,
+          chatSessions: 2,
           callSessions: 1,
-          totalTimeMinutes: 1,
-          avgEarningsPerSession: 3.32
+          totalTimeMinutes: 6,
+          avgEarningsPerSession: 0.61
         }
       ],
       recentSessions: [
         {
           _id: '1',
           type: 'chat',
-          user: { firstName: 'Zia', email: 'zia@gmail.com' },
-          amount: 0.65,
-          durationMinutes: 1,
-          endedAt: new Date().toISOString()
-        },
-        {
-          _id: '2',
-          type: 'call',
-          user: { firstName: 'Zia', email: 'zia@gmail.com' },
-          amount: 6.00,
-          durationMinutes: 0,
+          user: { username: 'Zia', email: 'zia@gmail.com' },
+          totalAmount: 7.37,
+          psychicEarnings: 1.84,
+          platformEarnings: 5.53,
+          amount: 1.84,
+          durationMinutes: 2,
           endedAt: new Date().toISOString()
         }
-      ]
+      ],
+      paymentHistory: mockPaymentHistory,
+      paymentSummary: {
+        totalEarnings: 7.37,
+        totalPaid: 1.00,
+        pendingAmount: 0.84,
+        totalPayments: 1
+      },
+      splitRatio: { psychic: 0.25, platform: 0.75 }
     };
   };
 
@@ -377,8 +672,8 @@ export default function PsychicDashboard() {
     return Math.round(((current - previous) / previous) * 100);
   };
 
-  const todayGrowth = calculateGrowth(dashboardData.today.earnings, dashboardData.today.earnings * 0.8);
-  const weekGrowth = calculateGrowth(dashboardData.week.earnings, dashboardData.week.earnings * 0.7);
+  const todayGrowth = calculateGrowth(dashboardData.today.psychicEarnings, dashboardData.today.psychicEarnings * 0.8);
+  const weekGrowth = calculateGrowth(dashboardData.week.psychicEarnings, dashboardData.week.psychicEarnings * 0.7);
 
   // Get user rank color
   const getUserRankColor = (index) => {
@@ -407,11 +702,6 @@ export default function PsychicDashboard() {
                   <h1 className="text-2xl font-bold" style={{ color: colors.primary }}>Earnings Dashboard</h1>
                   <p className="mt-1" style={{ color: colors.textLight }}>
                     Welcome back, <span className="font-semibold" style={{ color: colors.secondary }}>{psychic?.name || 'Psychic'}</span>!
-                    {dashboardData.allTime.earnings > 0 && (
-                      <span className="ml-2 font-medium" style={{ color: colors.success }}>
-                        Total: {formatCurrency(dashboardData.allTime.earnings)}
-                      </span>
-                    )}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
@@ -430,9 +720,36 @@ export default function PsychicDashboard() {
                 </div>
               </div>
               
+              {/* Payment Summary Banner - NEW */}
+              {!loading && dashboardData.paymentSummary && (
+                <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-white rounded-lg p-4 border" style={{ borderColor: colors.primary + '20' }}>
+                    <p className="text-sm" style={{ color: colors.primary + '70' }}>Total Earnings</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.primary }}>
+                      {formatCurrency(dashboardData.paymentSummary.totalEarnings)}
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border" style={{ borderColor: colors.success + '20' }}>
+                    <p className="text-sm" style={{ color: colors.success + '80' }}>Total Paid</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.success }}>
+                      {formatCurrency(dashboardData.paymentSummary.totalPaid)}
+                    </p>
+                    <p className="text-xs mt-1" style={{ color: colors.primary + '60' }}>
+                      {dashboardData.paymentSummary.totalPayments} payments
+                    </p>
+                  </div>
+                  <div className="bg-white rounded-lg p-4 border" style={{ borderColor: colors.warning + '20' }}>
+                    <p className="text-sm" style={{ color: colors.warning + '80' }}>Pending Balance</p>
+                    <p className="text-2xl font-bold" style={{ color: colors.warning }}>
+                      {formatCurrency(dashboardData.paymentSummary.pendingAmount)}
+                    </p>
+                  </div>
+                </div>
+              )}
+              
               {/* Tabs */}
               <div className="flex gap-1 mt-6 border-b overflow-x-auto" style={{ borderColor: colors.primary + '50' }}>
-                {['overview', 'users', 'sessions'].map((tab) => (
+                {['overview', 'payments', 'users', 'sessions'].map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
@@ -443,6 +760,11 @@ export default function PsychicDashboard() {
                     }`}
                   >
                     {tab}
+                    {tab === 'payments' && dashboardData.paymentHistory?.length > 0 && (
+                      <span className="ml-2 px-2 py-0.5 text-xs rounded-full bg-green-500 text-white">
+                        {dashboardData.paymentHistory.length}
+                      </span>
+                    )}
                     {activeTab === tab && (
                       <div className="absolute bottom-0 left-0 right-0 h-0.5" style={{ backgroundColor: colors.secondary }}></div>
                     )}
@@ -494,9 +816,12 @@ export default function PsychicDashboard() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <p className="text-sm" style={{ color: colors.primary + '70' }}>Earnings</p>
+                            <p className="text-sm" style={{ color: colors.primary + '70' }}>Your Earnings</p>
                             <p className="text-2xl font-bold" style={{ color: colors.chat }}>
-                              {formatCurrency(dashboardData.allTime.chatEarnings)}
+                              {formatCurrency(dashboardData.allTime.chatEarnings * 0.25)}
+                            </p>
+                            <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                              from {formatCurrency(dashboardData.allTime.chatEarnings)} total
                             </p>
                           </div>
                           <div>
@@ -517,9 +842,12 @@ export default function PsychicDashboard() {
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <p className="text-sm" style={{ color: colors.primary + '70' }}>Earnings</p>
+                            <p className="text-sm" style={{ color: colors.primary + '70' }}>Your Earnings</p>
                             <p className="text-2xl font-bold" style={{ color: colors.call }}>
-                              {formatCurrency(dashboardData.allTime.callEarnings)}
+                              {formatCurrency(dashboardData.allTime.callEarnings * 0.25)}
+                            </p>
+                            <p className="text-xs" style={{ color: colors.primary + '60' }}>
+                              from {formatCurrency(dashboardData.allTime.callEarnings)} total
                             </p>
                           </div>
                           <div>
@@ -531,43 +859,6 @@ export default function PsychicDashboard() {
                         </div>
                       </div>
                     </div>
-
-                    {/* Quick Stats */}
-                    {/* <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-                      <StatCard
-                        title="Today's Earnings"
-                        value={formatCurrency(dashboardData.today.earnings)}
-                        icon={FaMoneyBillWave}
-                        color={colors.success}
-                        loading={loading}
-                        change={todayGrowth}
-                        subtitle={`Chat: ${formatCurrency(dashboardData.today.chatEarnings)} • Call: ${formatCurrency(dashboardData.today.callEarnings)}`}
-                      />
-                      <StatCard
-                        title="This Week"
-                        value={formatCurrency(dashboardData.week.earnings)}
-                        icon={FaChartLine}
-                        color={colors.accent}
-                        loading={loading}
-                        change={weekGrowth}
-                        subtitle={`Chat: ${formatCurrency(dashboardData.week.chatEarnings)} • Call: ${formatCurrency(dashboardData.week.callEarnings)}`}
-                      />
-                      <StatCard
-                        title="Total Users"
-                        value={dashboardData.allTime.totalUsers}
-                        icon={FaUserFriends}
-                        color={colors.secondary}
-                        loading={loading}
-                      />
-                      <StatCard
-                        title="Total Sessions"
-                        value={dashboardData.allTime.sessions}
-                        icon={FaClock}
-                        color={colors.warning}
-                        loading={loading}
-                        subtitle={`Chat: ${dashboardData.allTime.chatSessions} • Call: ${dashboardData.allTime.callSessions}`}
-                      />
-                    </div> */}
 
                     {/* Top Users & Recent Sessions */}
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -596,8 +887,8 @@ export default function PsychicDashboard() {
                                       </div>
                                       <div>
                                         <p className="font-bold" style={{ color: colors.primary }}>
-      {user.user?.username || user.userName || 'Anonymous User'}
-    </p>
+                                          {user.user?.username || user.userName || 'Anonymous User'}
+                                        </p>
                                         <p className="text-sm" style={{ color: colors.primary + '70' }}>
                                           {user.user?.email || 'No email'}
                                         </p>
@@ -761,30 +1052,57 @@ export default function PsychicDashboard() {
                             
                             <div className="pt-4 border-t" style={{ borderColor: colors.primary + '20' }}>
                               <div className="flex justify-between items-center mb-2">
-                                <span style={{ color: colors.primary + '70' }}>Avg Session Value</span>
+                                <span style={{ color: colors.primary + '70' }}>Avg Session Value (Your Earnings)</span>
                                 <span className="font-bold" style={{ color: colors.accent }}>
                                   {dashboardData.allTime.sessions > 0 
-                                    ? formatCurrency(dashboardData.allTime.earnings / dashboardData.allTime.sessions)
+                                    ? formatCurrency(dashboardData.allTime.psychicEarnings / dashboardData.allTime.sessions)
                                     : '$0.00'}
                                 </span>
                               </div>
-                            </div>
-                            
-                            <div className="pt-4 border-t" style={{ borderColor: colors.primary + '20' }}>
-                              <div className="flex justify-between items-center mb-2">
-                                <span style={{ color: colors.primary + '70' }}>User Retention</span>
-                                <span className="font-bold" style={{ color: colors.secondary }}>
-                                  {dashboardData.userBreakdown.filter(u => (u.totalSessions || 0) > 1).length > 0 
-                                    ? `${Math.round((dashboardData.userBreakdown.filter(u => (u.totalSessions || 0) > 1).length / dashboardData.userBreakdown.length) * 100)}%`
-                                    : '0%'}
-                                </span>
-                              </div>
+                              <p className="text-xs text-right" style={{ color: colors.primary + '60' }}>
+                                from avg {formatCurrency(dashboardData.allTime.totalPaid / dashboardData.allTime.sessions)} total
+                              </p>
                             </div>
                           </div>
                         </div>
                       </div>
                     </div>
                   </>
+                )}
+
+                {/* Payments Tab - NEW */}
+                {activeTab === "payments" && (
+                  <div className="bg-white rounded-xl shadow-md p-6 border"
+                    style={{ borderColor: colors.primary + '20' }}>
+                    <div className="flex justify-between items-center mb-6">
+                      <h2 className="text-2xl font-bold" style={{ color: colors.primary }}>
+                        <FaReceipt className="inline mr-2" style={{ color: colors.secondary }} />
+                        Payment History
+                      </h2>
+                      <div className="text-right">
+                        <p className="text-sm" style={{ color: colors.primary + '70' }}>Total Paid</p>
+                        <p className="text-2xl font-bold" style={{ color: colors.success }}>
+                          {formatCurrency(dashboardData.paymentSummary?.totalPaid || 0)}
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {dashboardData.paymentHistory?.length > 0 ? (
+                      <div className="space-y-4">
+                        {dashboardData.paymentHistory.map((payment) => (
+                          <PaymentCard key={payment._id} payment={payment} />
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <FaCreditCard className="text-4xl mx-auto mb-3" style={{ color: colors.primary + '30' }} />
+                        <p style={{ color: colors.primary + '70' }}>No payment history yet</p>
+                        <p className="text-sm mt-2" style={{ color: colors.primary + '50' }}>
+                          Payments will appear here once processed by admin
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 )}
 
                 {/* Users Tab */}
@@ -801,7 +1119,7 @@ export default function PsychicDashboard() {
                         <table className="min-w-full divide-y" style={{ borderColor: colors.primary + '20' }}>
                           <thead style={{ backgroundColor: colors.primary + '05' }}>
                             <tr>
-                              {['Rank', 'User', 'Total', 'Chat', 'Call', 'Sessions', 'Time', 'Avg/Session'].map((header) => (
+                              {['Rank', 'User', 'Your Earnings', 'Chat (Your Share)', 'Call (Your Share)', 'Sessions', 'Time', 'Avg/Session'].map((header) => (
                                 <th key={header} className="px-6 py-3 text-left text-xs font-bold uppercase tracking-wider"
                                   style={{ color: colors.primary + '70' }}>
                                   {header}
@@ -819,28 +1137,29 @@ export default function PsychicDashboard() {
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
-                                 <td className="px-6 py-4 whitespace-nowrap">
-  <div className="flex items-center">
-    <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center"
-      style={{ background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)` }}>
-      <span className="font-bold text-white">
-        {user.user?.username?.[0]?.toUpperCase() || user.user?.email?.[0]?.toUpperCase() || 'U'}
-      </span>
-    </div>
-    <div className="ml-4">
-      <div className="font-bold" style={{ color: colors.primary }}>
-        {user.user?.username || 'Anonymous User'}
-      </div>
-      <div className="text-sm" style={{ color: colors.primary + '70' }}>
-        {user.user?.email || 'No email'}
-      </div>
-    </div>
-  </div>
-</td>
+                                  <div className="flex items-center">
+                                    <div className="flex-shrink-0 h-10 w-10 rounded-full flex items-center justify-center"
+                                      style={{ background: `linear-gradient(135deg, ${colors.accent} 0%, ${colors.primary} 100%)` }}>
+                                      <span className="font-bold text-white">
+                                        {user.user?.username?.[0]?.toUpperCase() || user.user?.email?.[0]?.toUpperCase() || 'U'}
+                                      </span>
+                                    </div>
+                                    <div className="ml-4">
+                                      <div className="font-bold" style={{ color: colors.primary }}>
+                                        {user.user?.username || 'Anonymous User'}
+                                      </div>
+                                      <div className="text-sm" style={{ color: colors.primary + '70' }}>
+                                        {user.user?.email || 'No email'}
+                                      </div>
+                                    </div>
+                                  </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                   <div className="text-lg font-bold" style={{ color: colors.success }}>
                                     {formatCurrency(user.totalEarnings || 0)}
+                                  </div>
+                                  <div className="text-xs" style={{ color: colors.primary + '60' }}>
+                                    of {formatCurrency((user.totalEarnings || 0) * 4)} total
                                   </div>
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap">
@@ -916,7 +1235,7 @@ export default function PsychicDashboard() {
                                   </div>
                                   <div>
                                     <h4 className="font-bold" style={{ color: colors.primary }}>
-                                      {session.user?.username || 'User'} {session.user?.lastname || ''}
+                                      {session.user?.username || 'User'}
                                     </h4>
                                     <p className="text-xs" style={{ color: colors.primary + '70' }}>
                                       {session.type === 'call' ? 'Call Session' : 'Chat Session'} • {session.endedAt ? new Date(session.endedAt).toLocaleDateString() : 'Date unknown'}
@@ -928,6 +1247,11 @@ export default function PsychicDashboard() {
                                       <span className="flex items-center">
                                         <FaMoneyBillWave className="mr-1" /> {formatCurrency(session.amount || 0)}
                                       </span>
+                                      {session.totalAmount && (
+                                        <span className="text-xs" style={{ color: colors.primary + '50' }}>
+                                          (total: {formatCurrency(session.totalAmount)})
+                                        </span>
+                                      )}
                                     </div>
                                   </div>
                                 </div>

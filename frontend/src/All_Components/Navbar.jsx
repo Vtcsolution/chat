@@ -9,7 +9,13 @@ import {
   Zap,
   ChevronLeft,
   Menu,
-  X
+  X,
+  User,
+  UserCircle,
+  Star,
+  LogIn,
+  UserPlus,
+  ChevronDown
 } from "lucide-react";
 import { Link } from "react-router-dom";
 import { useEffect, useState, useCallback } from "react";
@@ -21,6 +27,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./screen/AuthContext";
@@ -382,12 +396,18 @@ export default function Navbar({ onOpenPaymentModal }) {
             </Link>
           </motion.li>
           <motion.li variants={menuItemVariants}>
+            <Link onClick={handleMenu} to="/psychics" className="block py-2">
+              <span className="text-lg font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
+                Psychics
+              </span>
+            </Link>
+          </motion.li>
+          <motion.li variants={menuItemVariants}>
             <Link onClick={handleMenu} to="/contact" className="block py-2">
               <span className="text-lg font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
                 Contact
               </span>
             </Link>
-            
           </motion.li>
           <motion.li variants={menuItemVariants}>
             <Link onClick={handleMenu} to="/terms-&-conditions" className="block py-2">
@@ -396,20 +416,42 @@ export default function Navbar({ onOpenPaymentModal }) {
               </span>
             </Link>
           </motion.li>
+          
+          {/* Mobile Authentication Section */}
           {user && (
             <>
+              <motion.li variants={menuItemVariants} className="py-2 border-t pt-4" style={{ borderColor: colors.antiqueGold + "30" }}>
+                <div className="flex items-center gap-2 mb-3">
+                  <UserCircle className="w-5 h-5" style={{ color: colors.antiqueGold }} />
+                  <span className="font-medium" style={{ color: colors.deepPurple }}>{user.name || user.email}</span>
+                </div>
+              </motion.li>
               <motion.li variants={menuItemVariants} className="py-2">
                 <Link
                   onClick={handleMenu}
                   to="/dashboard"
-                  className="inline-block text-lg font-medium px-4 py-2 rounded-md transition-all duration-200 border"
+                  className="inline-block text-lg font-medium px-4 py-2 rounded-md transition-all duration-200 border w-full"
                   style={{
                     backgroundColor: colors.softIvory,
                     color: colors.deepPurple,
                     borderColor: colors.antiqueGold
                   }}
                 >
-                  Dashboard
+                  User Dashboard
+                </Link>
+              </motion.li>
+              <motion.li variants={menuItemVariants} className="py-2">
+                <Link
+                  onClick={handleMenu}
+                  to="/psychic/dashboard"
+                  className="inline-block text-lg font-medium px-4 py-2 rounded-md transition-all duration-200 border w-full"
+                  style={{
+                    backgroundColor: colors.softIvory,
+                    color: colors.deepPurple,
+                    borderColor: colors.antiqueGold
+                  }}
+                >
+                  Psychic Dashboard
                 </Link>
               </motion.li>
               <motion.li variants={menuItemVariants} className="py-2">
@@ -430,35 +472,77 @@ export default function Navbar({ onOpenPaymentModal }) {
               </motion.li>
             </>
           )}
+          
           {!user && (
-            <motion.div variants={menuItemVariants} className="flex flex-col gap-4 mt-4">
-              <Link to="/login" onClick={handleMenu}>
-                <Button
-                  variant="outline"
-                  className="text-sm w-full transition-colors duration-300 px-6 py-2"
-                  style={{
-                    backgroundColor: colors.softIvory,
-                    color: colors.deepPurple,
-                    borderColor: colors.antiqueGold
-                  }}
-                >
-                  Sign In
-                </Button>
-              </Link>
-              <Link to="/register" onClick={handleMenu}>
-                <Button
-                  variant="outline"
-                  className="text-sm w-full transition-colors duration-300 px-6 py-2"
-                  style={{
-                    backgroundColor: colors.softIvory,
-                    color: colors.deepPurple,
-                    borderColor: colors.antiqueGold
-                  }}
-                >
-                  Sign Up
-                </Button>
-              </Link>
-            </motion.div>
+            <>
+              <motion.li variants={menuItemVariants} className="py-2 border-t pt-4" style={{ borderColor: colors.antiqueGold + "30" }}>
+                <span className="text-sm font-medium block mb-2" style={{ color: colors.antiqueGold }}>USER ACCESS</span>
+                <div className="flex flex-col gap-2">
+                  <Link to="/login" onClick={handleMenu}>
+                    <Button
+                      variant="outline"
+                      className="text-sm w-full justify-start transition-colors duration-300 px-4 py-2"
+                      style={{
+                        backgroundColor: colors.softIvory,
+                        color: colors.deepPurple,
+                        borderColor: colors.antiqueGold
+                      }}
+                    >
+                      <LogIn className="w-4 h-4 mr-2" />
+                      User Sign In
+                    </Button>
+                  </Link>
+                  <Link to="/register" onClick={handleMenu}>
+                    <Button
+                      variant="outline"
+                      className="text-sm w-full justify-start transition-colors duration-300 px-4 py-2"
+                      style={{
+                        backgroundColor: colors.softIvory,
+                        color: colors.deepPurple,
+                        borderColor: colors.antiqueGold
+                      }}
+                    >
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      User Sign Up
+                    </Button>
+                  </Link>
+                </div>
+              </motion.li>
+              
+              <motion.li variants={menuItemVariants} className="py-2">
+                <span className="text-sm font-medium block mb-2" style={{ color: colors.antiqueGold }}>PSYCHIC ACCESS</span>
+                <div className="flex flex-col gap-2">
+                  <Link to="/psychic/login" onClick={handleMenu}>
+                    <Button
+                      variant="outline"
+                      className="text-sm w-full justify-start transition-colors duration-300 px-4 py-2"
+                      style={{
+                        backgroundColor: colors.softIvory,
+                        color: colors.deepPurple,
+                        borderColor: colors.antiqueGold
+                      }}
+                    >
+                      <Star className="w-4 h-4 mr-2" />
+                      Psychic Sign In
+                    </Button>
+                  </Link>
+                  <Link to="/psychic/register" onClick={handleMenu}>
+                    <Button
+                      variant="outline"
+                      className="text-sm w-full justify-start transition-colors duration-300 px-4 py-2"
+                      style={{
+                        backgroundColor: colors.softIvory,
+                        color: colors.deepPurple,
+                        borderColor: colors.antiqueGold
+                      }}
+                    >
+                      <Star className="w-4 h-4 mr-2" />
+                      Psychic Sign Up
+                    </Button>
+                  </Link>
+                </div>
+              </motion.li>
+            </>
           )}
         </motion.ul>
       </div>
@@ -485,6 +569,7 @@ export default function Navbar({ onOpenPaymentModal }) {
                 </motion.div>
               </Link>
             </div>
+            
             {/* Center: Navigation Links (Desktop only) */}
             <div className="hidden lg:flex items-center justify-center flex-1">
               <motion.ul
@@ -513,15 +598,13 @@ export default function Navbar({ onOpenPaymentModal }) {
                       Psychics
                     </span>
                   </Link>
-                  
                 </motion.li>
-                 <motion.li variants={menuItemVariants}>
+                <motion.li variants={menuItemVariants}>
                   <Link to="/contact">
                     <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
                       Contact
                     </span>
                   </Link>
-                  
                 </motion.li>
                 <motion.li variants={menuItemVariants}>
                   <Link to="/terms-&-conditions">
@@ -533,9 +616,9 @@ export default function Navbar({ onOpenPaymentModal }) {
               </motion.ul>
             </div>
            
-            {/* Right: Auth Buttons, Wallet & Mobile Menu */}
+            {/* Right: Auth Dropdown, Wallet & Mobile Menu */}
             <div className="flex items-center gap-4 min-w-0 justify-end flex-1">
-              {/* Desktop Auth Buttons */}
+              {/* Desktop Auth Dropdown */}
               <div className="hidden lg:flex items-center gap-4">
                 {user && (
                   <>
@@ -570,33 +653,81 @@ export default function Navbar({ onOpenPaymentModal }) {
                 )}
                
                 {!user && (
-                  <motion.div variants={menuItemVariants} className="flex items-center gap-3">
-                    <Link to="/login">
-                      <Button
-                        variant="outline"
-                        className="text-sm px-6 py-2 transition-all duration-200 border"
+                  <motion.div variants={menuItemVariants}>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="text-sm px-4 py-2 transition-all duration-200 border flex items-center gap-2"
+                          style={{
+                            backgroundColor: colors.softIvory,
+                            color: colors.deepPurple,
+                            borderColor: colors.antiqueGold
+                          }}
+                        >
+                          <User className="w-4 h-4" />
+                          <span>Sign In / Register</span>
+                          <ChevronDown className="w-4 h-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent 
+                        className="w-56 p-2"
                         style={{
                           backgroundColor: colors.softIvory,
-                          color: colors.deepPurple,
                           borderColor: colors.antiqueGold
                         }}
                       >
-                        Sign In
-                      </Button>
-                    </Link>
-                    <Link to="/register">
-                      <Button
-                        variant="outline"
-                        className="text-sm px-6 py-2 transition-all duration-200 border"
-                        style={{
-                          backgroundColor: colors.softIvory,
-                          color: colors.deepPurple,
-                          borderColor: colors.antiqueGold
-                        }}
-                      >
-                        Sign Up
-                      </Button>
-                    </Link>
+                        <DropdownMenuLabel style={{ color: colors.antiqueGold }}>
+                          User Access
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem asChild>
+                          <Link 
+                            to="/login" 
+                            className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-opacity-10"
+                            style={{ color: colors.deepPurple }}
+                          >
+                            <LogIn className="w-4 h-4" />
+                            <span>User Sign In</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link 
+                            to="/register" 
+                            className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-opacity-10"
+                            style={{ color: colors.deepPurple }}
+                          >
+                            <UserPlus className="w-4 h-4" />
+                            <span>User Sign Up</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        
+                        <DropdownMenuSeparator style={{ backgroundColor: colors.antiqueGold + "30" }} />
+                        
+                        <DropdownMenuLabel style={{ color: colors.antiqueGold }}>
+                          Psychic Access
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem asChild>
+                          <Link 
+                            to="/psychic/login" 
+                            className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-opacity-10"
+                            style={{ color: colors.deepPurple }}
+                          >
+                            <Star className="w-4 h-4" />
+                            <span>Psychic Sign In</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link 
+                            to="/psychic/register" 
+                            className="flex items-center gap-2 cursor-pointer px-2 py-1.5 rounded-md hover:bg-opacity-10"
+                            style={{ color: colors.deepPurple }}
+                          >
+                            <Star className="w-4 h-4" />
+                            <span>Psychic Sign Up</span>
+                          </Link>
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </motion.div>
                 )}
               </div>
@@ -984,6 +1115,7 @@ export default function Navbar({ onOpenPaymentModal }) {
                   </Dialog>
                 </div>
               )}
+              
               {/* Mobile Menu Button */}
               <button
                 className="lg:hidden text-gray-600 hover:text-gray-900 focus:outline-none"

@@ -1,10 +1,23 @@
 import { useState } from "react";
-import { Star, X, User, MessageCircle, Clock } from "lucide-react";
+import { Star, X, User, MessageCircle, Clock, Heart, ThumbsUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import axios from "axios";
+
+// Color scheme matching your app
+const colors = {
+  primary: "#2B1B3F",      // Deep purple
+  secondary: "#C9A24D",    // Antique gold
+  accent: "#9B7EDE",       // Light purple
+  bgLight: "#3A2B4F",      // Lighter purple
+  textLight: "#E8D9B0",    // Light gold text
+  success: "#10B981",      // Green
+  warning: "#F59E0B",      // Yellow
+  danger: "#EF4444",       // Red
+  background: "#F5F3EB",   // Soft ivory
+};
 
 const RatingModal = ({ 
   isOpen, 
@@ -20,12 +33,12 @@ const RatingModal = ({
 
   const handleSubmit = async () => {
     if (rating === 0) {
-      toast.error("Selecteer een beoordeling");
+      toast.error("Please select a rating");
       return;
     }
 
     if (comment.trim().length < 5) {
-      toast.error("Schrijf een opmerking (minimaal 5 tekens)");
+      toast.error("Please write a comment (minimum 5 characters)");
       return;
     }
 
@@ -46,13 +59,13 @@ const RatingModal = ({
       );
 
       if (response.data.success) {
-        toast.success("Bedankt voor je feedback!");
+        toast.success("Thank you for your feedback!");
         onRatingSubmitted(response.data.data);
         handleClose();
       }
     } catch (error) {
-      console.error("Fout bij het verzenden van beoordeling:", error);
-      toast.error(error.response?.data?.message || "Beoordeling verzenden mislukt");
+      console.error("Error submitting rating:", error);
+      toast.error(error.response?.data?.message || "Failed to submit rating");
     } finally {
       setSubmitting(false);
     }
@@ -67,36 +80,47 @@ const RatingModal = ({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="max-w-md sm:max-w-lg">
+      <DialogContent className="max-w-md sm:max-w-lg" style={{ backgroundColor: colors.background }}>
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg">
-            <Star className="h-5 w-5 text-amber-500" />
-            Beoordeel je sessie
+          <DialogTitle className="flex items-center gap-2 text-lg" style={{ color: colors.primary }}>
+            <Star className="h-5 w-5" style={{ color: colors.secondary }} />
+            Rate Your Session
           </DialogTitle>
-          <DialogDescription>
-            Hoe was je ervaring met {psychic.name}?
+          <DialogDescription style={{ color: colors.primary + '80' }}>
+            How was your experience with {psychic?.name}?
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-6">
           {/* Psychic Info */}
-          <div className="flex items-center gap-3 p-3 bg-gradient-to-r van-purple-50 naar-pink-50 rounded-lg">
-            <div className="h-12 w-12 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold">
-              {psychic.name?.[0] || "P"}
+          <div 
+            className="flex items-center gap-3 p-3 rounded-lg"
+            style={{ 
+              background: `linear-gradient(135deg, ${colors.primary}10 0%, ${colors.secondary}10 100%)`,
+              border: `1px solid ${colors.secondary}20`
+            }}
+          >
+            <div 
+              className="h-12 w-12 rounded-full flex items-center justify-center text-white font-bold"
+              style={{ 
+                background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`
+              }}
+            >
+              {psychic?.name?.[0]?.toUpperCase() || "P"}
             </div>
             <div>
-              <h3 className="font-semibold text-gray-900">{psychic.name}</h3>
-              <p className="text-sm text-gray-600 flex items-center gap-1">
+              <h3 className="font-semibold" style={{ color: colors.primary }}>{psychic?.name}</h3>
+              <p className="text-sm flex items-center gap-1" style={{ color: colors.primary + '70' }}>
                 <User className="h-3 w-3" />
-                Menselijk medium
+                Human Psychic
               </p>
             </div>
           </div>
 
           {/* Rating Stars */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">
-              Hoe zou je je ervaring beoordelen?
+            <label className="text-sm font-medium" style={{ color: colors.primary }}>
+              How would you rate your experience?
             </label>
             <div className="flex items-center justify-center gap-1">
               {[1, 2, 3, 4, 5].map((star) => (
@@ -107,64 +131,74 @@ const RatingModal = ({
                   onMouseEnter={() => setHoverRating(star)}
                   onMouseLeave={() => setHoverRating(0)}
                   className="p-1 transition-transform hover:scale-110 focus:outline-none"
-                  aria-label={`Beoordeel ${star} ster${star > 1 ? 'ren' : ''}`}
+                  aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
                 >
                   <Star
                     className={`h-10 w-10 ${
                       star <= (hoverRating || rating)
-                        ? "fill-amber-400 text-amber-400"
+                        ? "fill-current text-amber-400"
                         : "text-gray-300"
                     }`}
+                    style={{ 
+                      color: star <= (hoverRating || rating) ? colors.secondary : undefined 
+                    }}
                   />
                 </button>
               ))}
             </div>
             <div className="text-center">
-              <span className="text-sm text-gray-600">
-                {rating === 0 ? "Selecteer een beoordeling" : 
-                 rating === 1 ? "Slecht" :
-                 rating === 2 ? "Matig" :
-                 rating === 3 ? "Goed" :
-                 rating === 4 ? "Zeer goed" : "Uitstekend"}
+              <span className="text-sm" style={{ color: colors.primary + '70' }}>
+                {rating === 0 ? "Select a rating" : 
+                 rating === 1 ? "Poor" :
+                 rating === 2 ? "Fair" :
+                 rating === 3 ? "Good" :
+                 rating === 4 ? "Very Good" : "Excellent"}
               </span>
             </div>
           </div>
 
           {/* Comment */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-gray-700">
-              Deel je ervaring (optioneel maar gewaardeerd)
+            <label className="text-sm font-medium" style={{ color: colors.primary }}>
+              Share your experience (optional but appreciated)
             </label>
             <Textarea
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Wat vond je goed aan de sessie? Hoe kan het verbeterd worden?"
+              placeholder="What did you like about the session? How can it be improved?"
               className="min-h-[100px] resize-none"
               maxLength={500}
+              style={{ borderColor: colors.primary + '20' }}
             />
-            <div className="flex justify-between text-xs text-gray-500">
-              <span>Minimaal 5 tekens</span>
+            <div className="flex justify-between text-xs" style={{ color: colors.primary + '60' }}>
+              <span>Minimum 5 characters</span>
               <span>{comment.length}/500</span>
             </div>
           </div>
 
           {/* Tips for Good Feedback */}
-          <div className="p-3 bg-blue-50 border border-blue-100 rounded-lg">
-            <h4 className="text-sm font-medium text-blue-800 mb-1">
-              Tips voor nuttige feedback:
+          <div 
+            className="p-3 rounded-lg"
+            style={{ 
+              backgroundColor: colors.primary + '08',
+              border: `1px solid ${colors.primary}20`
+            }}
+          >
+            <h4 className="text-sm font-medium mb-1" style={{ color: colors.primary }}>
+              Tips for helpful feedback:
             </h4>
-            <ul className="text-xs text-blue-700 space-y-1">
+            <ul className="text-xs space-y-1" style={{ color: colors.primary + '80' }}>
               <li className="flex items-start gap-1">
-                <MessageCircle className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                Was het medium inzichtelijk en behulpzaam?
+                <MessageCircle className="h-3 w-3 mt-0.5 flex-shrink-0" style={{ color: colors.secondary }} />
+                Was the psychic insightful and helpful?
               </li>
               <li className="flex items-start gap-1">
-                <Clock className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                Was de responstijd redelijk?
+                <Clock className="h-3 w-3 mt-0.5 flex-shrink-0" style={{ color: colors.secondary }} />
+                Was the response time reasonable?
               </li>
               <li className="flex items-start gap-1">
-                <Star className="h-3 w-3 mt-0.5 flex-shrink-0" />
-                Zou je dit medium aan anderen aanbevelen?
+                <Heart className="h-3 w-3 mt-0.5 flex-shrink-0" style={{ color: colors.secondary }} />
+                Would you recommend this psychic to others?
               </li>
             </ul>
           </div>
@@ -176,32 +210,79 @@ const RatingModal = ({
               variant="outline"
               className="flex-1"
               disabled={submitting}
+              style={{ 
+                borderColor: colors.primary + '20',
+                color: colors.primary
+              }}
             >
               <X className="mr-2 h-4 w-4" />
-              Overslaan
+              Skip
             </Button>
             <Button
               onClick={handleSubmit}
-              className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              className="flex-1 text-white"
               disabled={submitting || rating === 0 || comment.trim().length < 5}
+              style={{ 
+                background: `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`,
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = `linear-gradient(135deg, ${colors.primary}CC 0%, ${colors.secondary}CC 100%)`;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = `linear-gradient(135deg, ${colors.primary} 0%, ${colors.secondary} 100%)`;
+              }}
             >
               {submitting ? (
                 <>
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Verzenden...
+                  Submitting...
                 </>
               ) : (
                 <>
                   <Star className="mr-2 h-4 w-4" />
-                  Beoordeling verzenden
+                  Submit Rating
                 </>
               )}
             </Button>
           </div>
 
+          {/* Quick Rating Options */}
+          <div className="flex justify-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRating(5);
+                setComment("Great session! Very insightful and helpful.");
+              }}
+              style={{ 
+                borderColor: colors.secondary + '30',
+                color: colors.primary
+              }}
+            >
+              <ThumbsUp className="h-3 w-3 mr-1" style={{ color: colors.secondary }} />
+              Great
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setRating(4);
+                setComment("Good session, helpful advice.");
+              }}
+              style={{ 
+                borderColor: colors.secondary + '30',
+                color: colors.primary
+              }}
+            >
+              <Star className="h-3 w-3 mr-1" style={{ color: colors.secondary }} />
+              Good
+            </Button>
+          </div>
+
           {/* Privacy Note */}
-          <p className="text-xs text-gray-500 text-center">
-            Je feedback helpt onze service te verbeteren. Beoordelingen zijn anoniem en zichtbaar voor andere gebruikers.
+          <p className="text-xs text-center" style={{ color: colors.primary + '50' }}>
+            Your feedback helps us improve our service. Ratings are anonymous and visible to other users.
           </p>
         </div>
       </DialogContent>

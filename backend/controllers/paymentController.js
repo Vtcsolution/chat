@@ -22,49 +22,8 @@ exports.createWalletTopup = async (req, res) => {
       return res.status(400).json({ error: "Plan ID is required" });
     }
 
-    // 检查是否已存在相同用户的待处理支付
-    const existingPendingPayment = await Payment.findOne({
-      userId,
-      status: 'pending',
-      createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) } // 30分钟内
-    });
-
-    if (existingPendingPayment) {
-      console.log('Existing pending payment found:', existingPendingPayment._id);
-      
-      // 检查是否过期
-      if (existingPendingPayment.createdAt < new Date(Date.now() - 30 * 60 * 1000)) {
-        // 标记为过期
-        existingPendingPayment.status = 'canceled';
-        await existingPendingPayment.save();
-        console.log('Expired payment marked as canceled');
-      } else {
-        // 返回现有的支付信息
-        if (existingPendingPayment.paymentIntentId) {
-          return res.json({
-            success: true,
-            clientSecret: existingPendingPayment.clientSecret,
-            paymentIntentId: existingPendingPayment.paymentIntentId,
-            amount: existingPendingPayment.amount,
-            credits: existingPendingPayment.totalCredits,
-            bonusCredits: existingPendingPayment.bonusCredits,
-            paymentId: existingPendingPayment._id,
-            existing: true
-          });
-        } else if (existingPendingPayment.checkoutSessionId) {
-          return res.json({
-            success: true,
-            sessionId: existingPendingPayment.checkoutSessionId,
-            url: `${process.env.FRONTEND_URL}/payment/checkout/${existingPendingPayment.checkoutSessionId}`,
-            amount: existingPendingPayment.amount,
-            planName: existingPendingPayment.planName,
-            credits: existingPendingPayment.totalCredits,
-            paymentId: existingPendingPayment._id,
-            existing: true
-          });
-        }
-      }
-    }
+    // REMOVED: The check for existing pending payments
+    // We now allow multiple pending payments
 
     let paymentDetails;
     let paymentMethodType = 'stripe_checkout';
@@ -606,6 +565,34 @@ exports.checkPaymentStatus = async (req, res) => {
       paymentId: req.params.paymentId
     });
     res.status(500).json({ error: "Error checking payment status" });
+  }
+};
+
+// Get recent user payments (for checking multiple pending payments)
+exports.getRecentUserPayments = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    
+    const recentPayments = await Payment.find({
+      userId,
+      createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Last 24 hours
+    })
+    .sort({ createdAt: -1 })
+    .limit(5);
+
+    res.json({
+      success: true,
+      payments: recentPayments.map(p => ({
+        id: p._id,
+        amount: p.amount,
+        status: p.status,
+        planName: p.planName,
+        createdAt: p.createdAt
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching recent payments:', error);
+    res.status(500).json({ error: 'Failed to fetch recent payments' });
   }
 };
 // Get credit plans

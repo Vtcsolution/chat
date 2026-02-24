@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
@@ -19,7 +19,12 @@ import {
   Zap,
   Sparkles,
   Heart,
-  ChevronDown
+  ChevronDown,
+  Globe,
+  BookOpen,
+  CheckCircle,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +35,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { motion } from "framer-motion";
+import io from 'socket.io-client';
 
 const PsychicProfile = () => {
   const { psychicId } = useParams();
@@ -51,6 +57,15 @@ const PsychicProfile = () => {
   const [ratingsPage, setRatingsPage] = useState(1);
   const [sortBy, setSortBy] = useState("newest");
   const [filterRating, setFilterRating] = useState("all");
+  
+  // Socket state for real-time status
+  const [psychicStatus, setPsychicStatus] = useState({
+    status: 'offline',
+    lastSeen: null,
+    lastUpdate: null
+  });
+  const [socketConnected, setSocketConnected] = useState(false);
+  const socketRef = useRef(null);
 
   // Color scheme
   const colors = {
@@ -61,8 +76,118 @@ const PsychicProfile = () => {
     darkPurple: "#1A1129",
   };
 
+  // Status configuration
+  const statusConfig = {
+    online: { color: '#10b981', label: 'Online', bg: '#10b98110', glow: '#10b98140' },
+    away:   { color: '#f59e0b', label: 'Away',   bg: '#f59e0b10', glow: '#f59e0b40' },
+    busy:   { color: '#f97316', label: 'Busy',   bg: '#f9731610', glow: '#f9731640' },
+    offline:{ color: '#9ca3af', label: 'Offline', bg: '#9ca3af10', glow: '#9ca3af40' },
+  };
+
   const INITIAL_RATINGS_COUNT = 5;
   const LOAD_MORE_COUNT = 10;
+
+  // ========== SOCKET.IO SETUP FOR REAL-TIME STATUS ==========
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    const userId = localStorage.getItem('userId');
+    
+    if (!psychicId) return;
+
+    // Create socket connection
+    const newSocket = io(`${import.meta.env.VITE_BASE_URL}`, {
+      auth: {
+        token,
+        userId,
+        role: 'user'
+      },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 10,
+      reconnectionDelay: 1000,
+    });
+
+    socketRef.current = newSocket;
+
+    newSocket.on('connect', () => {
+      console.log('✅ Socket connected for psychic profile');
+      setSocketConnected(true);
+      
+      // Subscribe to this psychic's status
+      newSocket.emit('subscribe_to_psychic_status', { 
+        psychicIds: [psychicId] 
+      });
+    });
+
+    newSocket.on('disconnect', () => {
+      console.log('❌ Socket disconnected');
+      setSocketConnected(false);
+    });
+
+    // Handle psychic status updates
+    newSocket.on('psychic_status_changed', (data) => {
+      if (data.psychicId === psychicId) {
+        console.log('🔄 Psychic status updated:', data.status);
+        setPsychicStatus({
+          status: data.status,
+          lastSeen: data.lastSeen,
+          lastUpdate: Date.now()
+        });
+      }
+    });
+
+    newSocket.on('psychic_status_update', (data) => {
+      if (data.psychicId === psychicId) {
+        setPsychicStatus({
+          status: data.status,
+          lastSeen: data.lastSeen,
+          lastUpdate: Date.now()
+        });
+      }
+    });
+
+    newSocket.on('psychic_statuses_response', (data) => {
+      if (data.statuses && data.statuses[psychicId]) {
+        setPsychicStatus({
+          status: data.statuses[psychicId].status || 'offline',
+          lastSeen: data.statuses[psychicId].lastSeen,
+          lastUpdate: Date.now()
+        });
+      }
+    });
+
+    // Request initial status
+    newSocket.emit('get_psychic_statuses', { 
+      psychicIds: [psychicId] 
+    });
+
+    // Cleanup
+    return () => {
+      if (newSocket) {
+        newSocket.disconnect();
+      }
+    };
+  }, [psychicId]);
+
+  // Helper function to get status display
+  const getPsychicStatusDisplay = () => {
+    const status = psychicStatus.status || 'offline';
+    const config = statusConfig[status] || statusConfig.offline;
+    
+    if (status === 'online' && psychicStatus.lastUpdate) {
+      const minutesSinceUpdate = (Date.now() - psychicStatus.lastUpdate) / (1000 * 60);
+      if (minutesSinceUpdate > 2) {
+        return statusConfig.away;
+      }
+    }
+    
+    return config;
+  };
+
+  const isPsychicAvailable = () => {
+    const status = psychicStatus.status || 'offline';
+    return status === 'online' || status === 'away';
+  };
 
   useEffect(() => {
     const fetchPsychicProfile = async () => {
@@ -83,7 +208,22 @@ const PsychicProfile = () => {
           
           if (response.data.success) {
             console.log("Human psychic found:", response.data.data);
-            setPsychic(response.data.data.psychic);
+            const psychicData = response.data.data.psychic;
+            
+            // Ensure all fields are properly formatted
+            setPsychic({
+              ...psychicData,
+              abilities: psychicData.abilities || psychicData.modalities || [],
+              languages: psychicData.languages || ['English'],
+              experience: psychicData.experience || psychicData.experienceYears || 3,
+              ratePerMin: psychicData.ratePerMin || 1.50,
+              isVerified: psychicData.isVerified || false,
+              rating: psychicData.rating || { avgRating: 4.5, totalReviews: 0 },
+              totalSessions: psychicData.totalSessions || 0,
+              successRate: psychicData.successRate || 95,
+              clientsHelped: psychicData.clientsHelped || 500
+            });
+            
             setPsychicType('human');
             await fetchInitialRatings(psychicId, 'human');
             return;
@@ -104,7 +244,21 @@ const PsychicProfile = () => {
           
           if (response.data.success) {
             console.log("AI psychic found:", response.data.data);
-            setPsychic(response.data.data.psychic);
+            const psychicData = response.data.data.psychic;
+            
+            setPsychic({
+              ...psychicData,
+              abilities: psychicData.abilities || psychicData.specialties || [],
+              languages: psychicData.languages || ['English'],
+              experience: psychicData.experience || 5,
+              ratePerMin: psychicData.ratePerMin || 1.50,
+              isVerified: psychicData.isVerified || true,
+              rating: psychicData.rating || { avgRating: 4.7, totalReviews: 0 },
+              totalSessions: psychicData.totalSessions || 0,
+              successRate: psychicData.successRate || 98,
+              clientsHelped: psychicData.clientsHelped || 1000
+            });
+            
             setPsychicType('ai');
             await fetchInitialRatings(psychicId, 'ai');
             return;
@@ -151,8 +305,8 @@ const PsychicProfile = () => {
       if (psychic?.feedback) {
         const feedbackRatings = psychic.feedback.map(f => ({
           _id: f._id || Math.random().toString(),
-          rating: f.rating || 0,
-          comment: f.message || "",
+          rating: f.rating || 5,
+          comment: f.message || "Great experience!",
           user: {
             firstName: f.userName || "Anonymous",
             image: f.userImage || "/default-avatar.jpg"
@@ -161,6 +315,23 @@ const PsychicProfile = () => {
         }));
         setAllRatings(feedbackRatings);
         setDisplayedRatings(feedbackRatings.slice(0, INITIAL_RATINGS_COUNT));
+        
+        // Calculate stats from feedback
+        if (feedbackRatings.length > 0) {
+          const total = feedbackRatings.length;
+          const sum = feedbackRatings.reduce((acc, r) => acc + r.rating, 0);
+          const avg = sum / total;
+          const distribution = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+          feedbackRatings.forEach(r => {
+            distribution[r.rating] = (distribution[r.rating] || 0) + 1;
+          });
+          
+          setRatingStats({
+            averageRating: avg,
+            totalRatings: total,
+            ratingDistribution: distribution
+          });
+        }
       }
     }
   };
@@ -221,13 +392,13 @@ const PsychicProfile = () => {
 
   // Sort and filter ratings
   useEffect(() => {
-    let filteredRatings = allRatings;
+    let filteredRatings = [...allRatings];
     
     if (filterRating !== "all") {
       filteredRatings = filteredRatings.filter(r => r.rating === parseInt(filterRating));
     }
     
-    filteredRatings = [...filteredRatings].sort((a, b) => {
+    filteredRatings = filteredRatings.sort((a, b) => {
       switch (sortBy) {
         case "newest":
           return new Date(b.createdAt) - new Date(a.createdAt);
@@ -267,6 +438,12 @@ const PsychicProfile = () => {
       navigate("/login");
       return;
     }
+    
+    if (!isPsychicAvailable()) {
+      toast.error(`This psychic is currently ${getPsychicStatusDisplay().label.toLowerCase()}. Please try again later.`);
+      return;
+    }
+    
     navigate(`/message/${psychicId}`);
   };
 
@@ -276,7 +453,13 @@ const PsychicProfile = () => {
       navigate("/login");
       return;
     }
-    navigate(`/message/${psychicId}`);
+    
+    if (!isPsychicAvailable()) {
+      toast.error(`This psychic is currently ${getPsychicStatusDisplay().label.toLowerCase()}. Please try again later.`);
+      return;
+    }
+    
+    navigate(`/audio-call/initiate/${psychicId}`);
   };
 
   const calculateStarPercentage = (starCount) => {
@@ -333,16 +516,26 @@ const PsychicProfile = () => {
   const abilities = Array.isArray(psychic.abilities) ? psychic.abilities : [];
   const gender = psychic.gender ? psychic.gender.charAt(0).toUpperCase() + psychic.gender.slice(1) : "Not specified";
   const experience = psychic.experience || "0";
-  const specialization = psychic.specialization || "Psychic Reader";
+  const specialization = psychic.specialization || psychic.category || "Psychic Reader";
   const responseTime = psychic.responseTime ? `${psychic.responseTime} min` : "Instant";
   const memberSince = psychic.createdAt ? new Date(psychic.createdAt).toLocaleDateString('en-US', { 
     month: 'short', 
     year: 'numeric' 
   }) : "Recently";
+  
+  const statusDisplay = getPsychicStatusDisplay();
+  const isAvailable = isPsychicAvailable();
 
   return (
     <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8" style={{ backgroundColor: colors.softIvory }}>
       <div className="max-w-7xl mx-auto">
+        {/* Connection Status */}
+        {!socketConnected && (
+          <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50">
+           
+          </div>
+        )}
+
         {/* Hero Section */}
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
@@ -355,9 +548,12 @@ const PsychicProfile = () => {
             <div className="relative">
               <div className="relative rounded-2xl overflow-hidden shadow-xl" style={{ border: `3px solid ${colors.antiqueGold}` }}>
                 <img
-                  src={psychic.image}
+                  src={psychic.image || `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`}
                   alt={psychic.name}
                   className="w-64 h-64 object-cover"
+                  onError={(e) => {
+                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(psychic.name)}&background=7c3aed&color=fff&size=256`;
+                  }}
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
               </div>
@@ -370,7 +566,7 @@ const PsychicProfile = () => {
                     color: colors.deepPurple
                   }}>
                   <User className="h-3 w-3" />
-                  Human Psychic
+                  {psychicType === 'human' ? 'Human Psychic' : 'AI Psychic'}
                 </Badge>
               </div>
               
@@ -386,6 +582,31 @@ const PsychicProfile = () => {
                   </Badge>
                 </div>
               )}
+
+              {/* Status Badge */}
+              <div className="absolute top-3 left-3 z-10">
+                <div 
+                  className="flex items-center gap-1.5 px-3 py-1 rounded-full backdrop-blur-sm"
+                  style={{ 
+                    backgroundColor: `${statusDisplay.color}20`,
+                    border: `1px solid ${statusDisplay.color}30`,
+                  }}
+                >
+                  <span className="relative flex h-2 w-2">
+                    <span 
+                      className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                      style={{ backgroundColor: statusDisplay.color }}
+                    />
+                    <span 
+                      className="relative inline-flex rounded-full h-2 w-2"
+                      style={{ backgroundColor: statusDisplay.color }}
+                    />
+                  </span>
+                  <span className="text-xs font-medium" style={{ color: statusDisplay.color }}>
+                    {statusDisplay.label}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -429,7 +650,9 @@ const PsychicProfile = () => {
                 {/* Quick Stats */}
                 <div className="grid grid-cols-3 gap-4">
                   <div className="text-center">
-                    <div className="text-xl font-bold" style={{ color: colors.deepPurple }}>{experience === "0" ? "New" : experience}</div>
+                    <div className="text-xl font-bold" style={{ color: colors.deepPurple }}>
+                      {experience === "0" ? "New" : experience}{experience !== "0" ? " yrs" : ""}
+                    </div>
                     <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Experience</div>
                   </div>
                   <div className="text-center">
@@ -449,7 +672,7 @@ const PsychicProfile = () => {
               <div className="py-4">
                 <h3 className="font-semibold mb-2" style={{ color: colors.deepPurple }}>About</h3>
                 <p className="text-sm leading-relaxed" style={{ color: colors.deepPurple + "CC" }}>
-                  {psychic.bio || `${psychic.name} is an experienced psychic specializing in ${specialization.toLowerCase()}.`}
+                  {psychic.bio || `${psychic.name} is an experienced psychic specializing in ${specialization.toLowerCase()}. With ${experience} years of experience, they have helped thousands of clients find clarity and guidance.`}
                 </p>
               </div>
               
@@ -465,11 +688,12 @@ const PsychicProfile = () => {
                   </Badge>
                 )}
                 {psychic.languages && psychic.languages.map((language, idx) => (
-                  <Badge key={idx} className="px-3 py-1 text-xs"
+                  <Badge key={idx} className="px-3 py-1 text-xs flex items-center gap-1"
                     style={{ 
                       backgroundColor: colors.lightGold,
                       color: colors.deepPurple
                     }}>
+                    <Globe className="h-3 w-3" />
                     {language}
                   </Badge>
                 ))}
@@ -477,31 +701,7 @@ const PsychicProfile = () => {
               
               {/* Action Buttons */}
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
-                  <Button
-                    onClick={handleChatClick}
-                    className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
-                    style={{ 
-                      backgroundColor: colors.deepPurple,
-                      color: colors.softIvory
-                    }}
-                  >
-                    <MessageCircle className="mr-2 h-4 w-4" />
-                    Chat
-                  </Button>
-                  
-                  <Button
-                    onClick={handleCallClick}
-                    className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
-                    style={{ 
-                      backgroundColor: colors.antiqueGold,
-                      color: colors.deepPurple
-                    }}
-                  >
-                    <Phone className="mr-2 h-4 w-4" />
-                    Call
-                  </Button>
-                </div>
+              
                 
                 <div className="text-center text-sm" style={{ color: colors.deepPurple + "CC" }}>
                   ${(psychic.ratePerMin || 1.00).toFixed(2)}/min for both chat & call
@@ -873,10 +1073,12 @@ const PsychicProfile = () => {
                     </p>
                     <Button
                       onClick={handleChatClick}
+                      disabled={!isAvailable}
                       className="rounded-full"
                       style={{ 
                         backgroundColor: colors.antiqueGold,
-                        color: colors.deepPurple
+                        color: colors.deepPurple,
+                        opacity: !isAvailable ? 0.5 : 1
                       }}
                     >
                       <MessageCircle className="h-4 w-4 mr-2" />
@@ -930,7 +1132,9 @@ const PsychicProfile = () => {
                       <Clock className="h-4 w-4" style={{ color: colors.antiqueGold }} />
                       <span className="font-medium" style={{ color: colors.deepPurple }}>Experience</span>
                     </div>
-                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{experience === "0" ? "New psychic" : `${experience} years experience`}</p>
+                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
+                      {experience === "0" ? "New psychic" : `${experience} years experience`}
+                    </p>
                   </div>
                   
                   <div className="space-y-2">
@@ -951,10 +1155,10 @@ const PsychicProfile = () => {
                     <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{gender}</p>
                   </div>
 
-                  {psychic.languages && (
+                  {psychic.languages && psychic.languages.length > 0 && (
                     <div className="space-y-2">
                       <div className="flex items-center gap-2">
-                        <Award className="h-4 w-4" style={{ color: colors.antiqueGold }} />
+                        <Globe className="h-4 w-4" style={{ color: colors.antiqueGold }} />
                         <span className="font-medium" style={{ color: colors.deepPurple }}>Languages</span>
                       </div>
                       <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{psychic.languages.join(', ')}</p>
@@ -968,6 +1172,16 @@ const PsychicProfile = () => {
                         <span className="font-medium" style={{ color: colors.deepPurple }}>Location</span>
                       </div>
                       <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{psychic.location}</p>
+                    </div>
+                  )}
+
+                  {psychic.totalSessions > 0 && (
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <BookOpen className="h-4 w-4" style={{ color: colors.antiqueGold }} />
+                        <span className="font-medium" style={{ color: colors.deepPurple }}>Total Sessions</span>
+                      </div>
+                      <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{psychic.totalSessions}+ sessions</p>
                     </div>
                   )}
                 </div>
@@ -1001,16 +1215,16 @@ const PsychicProfile = () => {
                   
                   <div className="text-center p-4 rounded-lg" style={{ backgroundColor: colors.lightGold }}>
                     <div className="text-3xl font-bold mb-1" style={{ color: colors.deepPurple }}>
-                      {experience === "0" ? "New" : experience}
+                      {psychic.successRate || 95}%
                     </div>
-                    <div className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Years Experience</div>
+                    <div className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Success Rate</div>
                   </div>
                   
                   <div className="text-center p-4 rounded-lg" style={{ backgroundColor: colors.lightGold }}>
                     <div className="text-3xl font-bold mb-1" style={{ color: colors.deepPurple }}>
-                      ${(psychic.ratePerMin || 1.00).toFixed(2)}
+                      {psychic.clientsHelped || 500}+
                     </div>
-                    <div className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Rate per Minute</div>
+                    <div className="text-sm" style={{ color: colors.deepPurple + "CC" }}>Clients Helped</div>
                   </div>
                 </div>
                 
@@ -1018,7 +1232,28 @@ const PsychicProfile = () => {
                   <h4 className="font-semibold mb-2" style={{ color: colors.deepPurple }}>Client Satisfaction</h4>
                   <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
                     {psychic.name} maintains a {ratingStats.averageRating.toFixed(1)}★ rating based on {ratingStats.totalRatings} reviews.
+                    {psychic.successRate && ` They have a ${psychic.successRate}% success rate and have helped ${psychic.clientsHelped || 500}+ clients.`}
                   </p>
+                </div>
+
+                {/* Rating Distribution Summary */}
+                <div className="mt-8">
+                  <h4 className="font-semibold mb-3" style={{ color: colors.deepPurple }}>Rating Distribution</h4>
+                  <div className="space-y-2">
+                    {[5, 4, 3, 2, 1].map((star) => (
+                      <div key={star} className="flex items-center gap-2">
+                        <span className="text-sm w-8" style={{ color: colors.deepPurple }}>{star}★</span>
+                        <Progress 
+                          value={calculateStarPercentage(ratingStats.ratingDistribution[star] || 0)} 
+                          className="h-2 flex-1"
+                          style={{ backgroundColor: colors.lightGold }}
+                        />
+                        <span className="text-sm w-12 text-right" style={{ color: colors.deepPurple }}>
+                          {calculateStarPercentage(ratingStats.ratingDistribution[star] || 0)}%
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </CardContent>
             </Card>

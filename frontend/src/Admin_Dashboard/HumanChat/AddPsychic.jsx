@@ -18,7 +18,10 @@ import {
   Calendar,    // Experience/calendar icon
   Clock,       // Response time icon
   Shield,      // Verification shield icon
-  Sparkles     // Psychic theme icon
+  Sparkles,    // Psychic theme icon
+  Layers,      // Category icon
+  Upload,      // Upload icon
+  X            // X icon for removing image
 } from 'lucide-react';
 import {
   Card,
@@ -58,6 +61,19 @@ const colors = {
   background: "#F5F3EB",   // Soft ivory
 };
 
+// Psychic categories from the model
+const psychicCategories = [
+  'Tarot Reading',
+  'Astrology',
+  'Reading',
+  'Love & Relationships',
+  'Career & Finance',
+  'Spiritual Guidance',
+  'Numerology',
+  'Clairvoyant',
+  'Dream Analysis'
+];
+
 const AddPsychic = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -65,6 +81,12 @@ const AddPsychic = () => {
   const [loading, setLoading] = useState(false);
   const [previewImage, setPreviewImage] = useState('');
   const [errors, setErrors] = useState({});
+  
+  // New state for image upload
+  const [imageFile, setImageFile] = useState(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState(null);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -75,6 +97,7 @@ const AddPsychic = () => {
     ratePerMin: "1.50",
     bio: "",
     gender: "female",
+    category: "Reading", // Default category
     image: "",
     abilities: "",
     location: "",
@@ -85,6 +108,74 @@ const AddPsychic = () => {
     availability: true,
     responseTime: "5",
   });
+
+  // Cloudinary upload function
+  const uploadToCloudinary = async (file) => {
+    const data = new FormData();
+    data.append("file", file);
+    data.append("upload_preset", "ml_default");
+    
+    try {
+      const res = await fetch("https://api.cloudinary.com/v1_1/dovyqaltq/image/upload", {
+        method: "POST",
+        body: data,
+      });
+      
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error?.message || "Upload failed");
+      return json.secure_url;
+    } catch (error) {
+      console.error('❌ Cloudinary upload error:', error);
+      throw error;
+    }
+  };
+
+  // Handle image file selection
+  const handleImageFileChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        toast({
+          title: "Invalid File Type",
+          description: "Please select an image file (JPG, PNG, GIF)",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Image size should be less than 5MB",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setImageFile(file);
+      setImagePreviewUrl(URL.createObjectURL(file));
+      setFormData(prev => ({ ...prev, image: "" })); // Clear URL when file is selected
+      setPreviewImage(''); // Clear URL preview
+    }
+  };
+
+  // Handle image URL change
+  const handleImageUrlChange = (value) => {
+    setPreviewImage(value);
+    setFormData(prev => ({ ...prev, image: value }));
+    setImageFile(null); // Clear file when URL is entered
+    setImagePreviewUrl(null); // Clear file preview
+  };
+
+  // Remove image
+  const removeImage = () => {
+    setImageFile(null);
+    setImagePreviewUrl(null);
+    setPreviewImage('');
+    setFormData(prev => ({ ...prev, image: '' }));
+  };
 
   // Handle form input changes
   const handleInputChange = (e) => {
@@ -135,16 +226,15 @@ const AddPsychic = () => {
     if (!formData.ratePerMin) newErrors.ratePerMin = "Rate is required";
     if (!formData.bio.trim()) newErrors.bio = "Bio is required";
     if (formData.bio.length < 10) newErrors.bio = "Bio must be at least 10 characters";
-    if (formData.image && !formData.image.startsWith('http')) newErrors.image = "Please enter a valid URL";
+    if (!formData.category) newErrors.category = "Category is required";
+    
+    // Validate image - either URL or file
+    if (formData.image && !formData.image.startsWith('http')) {
+      newErrors.image = "Please enter a valid URL";
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  // Handle image URL change
-  const handleImageChange = (value) => {
-    setPreviewImage(value);
-    setFormData(prev => ({ ...prev, image: value }));
   };
 
   // Submit form
@@ -162,6 +252,36 @@ const AddPsychic = () => {
 
     try {
       setLoading(true);
+      let finalImageUrl = formData.image;
+      
+      // Upload image to Cloudinary if file is selected
+      if (imageFile) {
+        setIsUploadingImage(true);
+        toast({
+          title: "Uploading Image",
+          description: "Please wait while we upload the profile image...",
+          variant: "default"
+        });
+        
+        try {
+          finalImageUrl = await uploadToCloudinary(imageFile);
+          setIsUploadingImage(false);
+          toast({
+            title: "Image Uploaded",
+            description: "Profile image uploaded successfully",
+            variant: "default"
+          });
+        } catch (uploadError) {
+          setIsUploadingImage(false);
+          toast({
+            title: "Image Upload Failed",
+            description: uploadError.message || "Failed to upload image. Please try again or use a URL instead.",
+            variant: "destructive"
+          });
+          setLoading(false);
+          return;
+        }
+      }
 
       // Prepare abilities array
       const abilitiesArray = formData.abilities 
@@ -180,7 +300,8 @@ const AddPsychic = () => {
         ratePerMin: parseFloat(formData.ratePerMin),
         bio: formData.bio.trim(),
         gender: formData.gender,
-        image: formData.image.trim(),
+        category: formData.category,
+        image: finalImageUrl || '',
         abilities: abilitiesArray,
         location: formData.location.trim(),
         languages: languagesArray,
@@ -235,6 +356,7 @@ const AddPsychic = () => {
       });
     } finally {
       setLoading(false);
+      setIsUploadingImage(false);
     }
   };
 
@@ -245,10 +367,10 @@ const AddPsychic = () => {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.background }}>
-  <Dashboard_Navbar side={side} setSide={setSide} />
-  <div className="flex pt-16">
-    <Doctor_Side_Bar side={side} setSide={setSide} />
-    <main className="flex-1 p-4 md:p-6 lg:p-8 ml-0 lg:ml-64 transition-all duration-300"> 
+      <Dashboard_Navbar side={side} setSide={setSide} />
+      <div className="flex pt-16">
+        <Doctor_Side_Bar side={side} setSide={setSide} />
+        <main className="flex-1 p-4 md:p-6 lg:p-8 ml-0 lg:ml-64 transition-all duration-300"> 
           {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
             <div className="flex items-center gap-4">
@@ -272,7 +394,6 @@ const AddPsychic = () => {
                     Add New Psychic
                   </h1>
                 </div>
-                
               </div>
             </div>
           </div>
@@ -281,7 +402,7 @@ const AddPsychic = () => {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
               {/* Left Column - Profile & Image */}
               <div className="lg:col-span-1 space-y-6">
-                {/* Profile Image Card */}
+                {/* Profile Image Card - UPDATED with upload functionality */}
                 <Card 
                   className="border-none shadow-lg"
                   style={{ 
@@ -295,21 +416,23 @@ const AddPsychic = () => {
                       Profile Image
                     </CardTitle>
                     <CardDescription style={{ color: colors.primary + '70' }}>
-                      Add a profile picture for the psychic
+                      Upload or enter URL for profile picture
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    {/* Image Preview */}
+                    {/* Image Preview with Upload */}
                     <div className="flex flex-col items-center">
                       <div 
-                        className="relative h-48 w-48 rounded-full overflow-hidden shadow-lg"
+                        className="relative h-48 w-48 rounded-full overflow-hidden shadow-lg group cursor-pointer"
                         style={{ border: `4px solid ${colors.secondary}30` }}
+                        onMouseEnter={() => setIsHovered(true)}
+                        onMouseLeave={() => setIsHovered(false)}
                       >
-                        {previewImage ? (
+                        {imagePreviewUrl || previewImage ? (
                           <img
-                            src={previewImage}
+                            src={imagePreviewUrl || previewImage}
                             alt="Preview"
-                            className="h-full w-full object-cover hover:scale-110 transition-transform duration-300"
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
                             onError={(e) => {
                               e.target.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' fill='%23f3f4f6'/%3E%3Ctext x='50%25' y='50%25' font-family='Arial' font-size='16' fill='%239ca3af' text-anchor='middle' dy='.3em'%3ENo Image%3C/text%3E%3C/svg%3E";
                             }}
@@ -322,9 +445,39 @@ const AddPsychic = () => {
                             <User className="h-24 w-24" style={{ color: colors.primary + '30' }} />
                           </div>
                         )}
+                        
+                        {/* Upload Overlay */}
+                        <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                          <Upload className="h-8 w-8 text-white" />
+                        </div>
+                        
+                        {/* Hidden file input */}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                          onChange={handleImageFileChange}
+                        />
                       </div>
+                      
+                      {/* Remove Image Button */}
+                      {(imagePreviewUrl || previewImage) && (
+                        <button
+                          type="button"
+                          className="mt-2 text-sm flex items-center gap-1 px-3 py-1 rounded-full transition-all duration-200 hover:scale-105"
+                          style={{ 
+                            backgroundColor: colors.danger + '10',
+                            color: colors.danger
+                          }}
+                          onClick={removeImage}
+                        >
+                          <X className="h-3 w-3" />
+                          Remove Image
+                        </button>
+                      )}
+                      
                       <p className="text-sm mt-3" style={{ color: colors.primary + '70' }}>
-                        Recommended: 300x300 pixels
+                        Click to upload or use URL below
                       </p>
                     </div>
 
@@ -332,23 +485,29 @@ const AddPsychic = () => {
                     <div className="space-y-2">
                       <Label htmlFor="image" className="flex items-center gap-2 font-medium" style={{ color: colors.primary }}>
                         <Image className="h-4 w-4" />
-                        Image URL
+                        Image URL (Optional)
                       </Label>
                       <Input
                         id="image"
                         name="image"
                         placeholder="https://example.com/image.jpg"
                         value={formData.image}
-                        onChange={(e) => handleImageChange(e.target.value)}
+                        onChange={(e) => handleImageUrlChange(e.target.value)}
                         className={errors.image ? "border-red-500" : ""}
                         style={{ borderColor: colors.primary + '20' }}
+                        disabled={!!imageFile} // Disable URL input if file is selected
                       />
                       {errors.image && (
                         <p className="text-sm text-red-500">{errors.image}</p>
                       )}
                       <p className="text-sm" style={{ color: colors.primary + '60' }}>
-                        Enter a direct URL to the profile image
+                        {imageFile ? "✓ File selected for upload" : "Enter a direct URL to the profile image"}
                       </p>
+                      {imageFile && (
+                        <p className="text-xs" style={{ color: colors.success }}>
+                          File: {imageFile.name} ({(imageFile.size / 1024).toFixed(1)} KB)
+                        </p>
+                      )}
                     </div>
 
                     {/* Status Switches */}
@@ -589,6 +748,43 @@ const AddPsychic = () => {
                       )}
                     </div>
 
+                    {/* Category */}
+                    <div className="space-y-2">
+                      <Label htmlFor="category" className="flex items-center gap-2 font-medium" style={{ color: colors.primary }}>
+                        <Layers className="h-4 w-4" />
+                        Category *
+                      </Label>
+                      <Select 
+                        value={formData.category} 
+                        onValueChange={(value) => handleSelectChange('category', value)}
+                      >
+                        <SelectTrigger 
+                          id="category" 
+                          className={errors.category ? "border-red-500" : ""}
+                          style={{ borderColor: colors.primary + '20' }}
+                        >
+                          <SelectValue placeholder="Select category" />
+                        </SelectTrigger>
+                        <SelectContent style={{ backgroundColor: colors.background }}>
+                          {psychicCategories.map((category) => (
+                            <SelectItem 
+                              key={category} 
+                              value={category}
+                              style={{ color: colors.primary }}
+                            >
+                              {category}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.category && (
+                        <p className="text-sm text-red-500">{errors.category}</p>
+                      )}
+                      <p className="text-sm" style={{ color: colors.primary + '60' }}>
+                        Select the psychic's primary category
+                      </p>
+                    </div>
+
                     {/* Response Time */}
                     <div className="space-y-2">
                       <Label htmlFor="responseTime" className="flex items-center gap-2 font-medium" style={{ color: colors.primary }}>
@@ -762,7 +958,7 @@ const AddPsychic = () => {
                   type="button"
                   variant="outline"
                   onClick={handleBack}
-                  disabled={loading}
+                  disabled={loading || isUploadingImage}
                   className="hover:scale-105 transition-transform duration-200"
                   style={{
                     borderColor: colors.primary + '20',
@@ -773,17 +969,17 @@ const AddPsychic = () => {
                 </Button>
                 <Button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || isUploadingImage}
                   className="hover:scale-105 transition-transform duration-200"
                   style={{
                     backgroundColor: colors.secondary,
                     color: colors.primary,
                   }}
                 >
-                  {loading ? (
+                  {loading || isUploadingImage ? (
                     <>
                       <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                      Creating Psychic...
+                      {isUploadingImage ? "Uploading Image..." : "Creating Psychic..."}
                     </>
                   ) : (
                     <>
@@ -818,7 +1014,15 @@ const AddPsychic = () => {
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: colors.success }} />
-                  <span>Use a professional image URL for best results (minimum 300x300 pixels)</span>
+                  <span>Choose the appropriate <strong style={{ color: colors.secondary }}>category</strong> from the dropdown list</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: colors.success }} />
+                  <span><strong style={{ color: colors.secondary }}>Upload an image</strong> by clicking on the profile circle, or enter a URL</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: colors.success }} />
+                  <span>Use a professional image (JPG, PNG) - maximum 5MB, 300x300 pixels recommended</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CheckCircle className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: colors.success }} />

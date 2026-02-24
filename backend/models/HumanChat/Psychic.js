@@ -59,6 +59,15 @@ const psychicSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  resetPasswordToken: {
+    type: String,
+    select: false
+  },
+  resetPasswordExpire: {
+    type: Date,
+    select: false
+  },
+ 
   type: {
     type: String,
     default: 'Human Psychic'

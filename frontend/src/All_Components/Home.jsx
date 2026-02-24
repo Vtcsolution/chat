@@ -14,7 +14,7 @@ const Home = () => {
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
   const [humanPsychics, setHumanPsychics] = useState([]);
-  const [showing, setShowing] = useState(4);
+  const [showing, setShowing] = useState(6); // Show first 6 psychics
   const [isLoadingHumanPsychics, setIsLoadingHumanPsychics] = useState(false);
   const [humanPsychicsError, setHumanPsychicsError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -33,14 +33,15 @@ const Home = () => {
     darkPurple: "#1A1129",
   };
 
-  // Fetch human psychics data with ratings
+  // Fetch human psychics data with ratings - fetch ALL psychics
   useEffect(() => {
     const fetchHumanPsychicsWithFastStatus = async () => {
       setIsLoadingHumanPsychics(true);
       setHumanPsychicsError(null);
       try {
         const token = localStorage.getItem("accessToken");
-        const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/api/human-psychics`, {
+        // Use the all=true parameter to get ALL psychics without pagination
+        const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/api/human-psychics?all=true`, {
           headers: token ? { Authorization: `Bearer ${token}` } : {},
           withCredentials: true,
         });
@@ -118,79 +119,80 @@ const Home = () => {
     
     fetchHumanPsychicsWithFastStatus();
   }, []);
-// Add this function to your Home component, after the handlePsychicSelect function
-const initiateAudioCall = async (psychic) => {
-  if (!user) {
-    toast.error("Please log in to start a call");
-    navigate("/login");
-    return;
-  }
 
-  const psychicStatus = getPsychicStatus(psychic._id);
-  const isAvailable = psychicStatus === 'online' || psychicStatus === 'away';
+  // Add this function to your Home component, after the handlePsychicSelect function
+  const initiateAudioCall = async (psychic) => {
+    if (!user) {
+      toast.error("Please log in to start a call");
+      navigate("/login");
+      return;
+    }
 
-  if (!isAvailable) {
-    toast.error(`This psychic is currently ${psychicStatus.toLowerCase()}. Please try again later.`);
-    return;
-  }
+    const psychicStatus = getPsychicStatus(psychic._id);
+    const isAvailable = psychicStatus === 'online' || psychicStatus === 'away';
 
-  setIsSubmitting(true);
-  
-  try {
-    const token = localStorage.getItem("accessToken");
+    if (!isAvailable) {
+      toast.error(`This psychic is currently ${psychicStatus.toLowerCase()}. Please try again later.`);
+      return;
+    }
+
+    setIsSubmitting(true);
     
-    // Initiate call via API
-    const response = await axios.post(
-      `${import.meta.env.VITE_BASE_URL}/api/calls/initiate/${psychic._id}`,
-      {},
-      { 
-        headers: { 
-          Authorization: `Bearer ${token}` 
-        },
-        withCredentials: true
-      }
-    );
-    
-    if (response.data.success) {
-      const { callRequestId, callSessionId, roomName, expiresAt, isFreeSession } = response.data.data;
+    try {
+      const token = localStorage.getItem("accessToken");
       
-      // Navigate to audio call page with all necessary data
-      navigate(`/audio-call/${callSessionId}`, {
-        state: {
-          callSessionId,
-          callRequestId,
-          roomName,
-          psychic,
-          isFreeSession,
-          expiresAt,
-          user,
-          fromHome: true,
-          status: 'initiated' // initial status
+      // Initiate call via API
+      const response = await axios.post(
+        `${import.meta.env.VITE_BASE_URL}/api/calls/initiate/${psychic._id}`,
+        {},
+        { 
+          headers: { 
+            Authorization: `Bearer ${token}` 
+          },
+          withCredentials: true
         }
-      });
+      );
       
-      toast.success("Call initiated! Waiting for psychic to accept...");
-    } else {
-      toast.error(response.data.message || "Failed to initiate call");
+      if (response.data.success) {
+        const { callRequestId, callSessionId, roomName, expiresAt, isFreeSession } = response.data.data;
+        
+        // Navigate to audio call page with all necessary data
+        navigate(`/audio-call/${callSessionId}`, {
+          state: {
+            callSessionId,
+            callRequestId,
+            roomName,
+            psychic,
+            isFreeSession,
+            expiresAt,
+            user,
+            fromHome: true,
+            status: 'initiated' // initial status
+          }
+        });
+        
+        toast.success("Call initiated! Waiting for psychic to accept...");
+      } else {
+        toast.error(response.data.message || "Failed to initiate call");
+      }
+    } catch (error) {
+      console.error("Error initiating audio call:", error);
+      
+      if (error.response?.status === 400 && error.response?.data?.message?.includes('already have an active call')) {
+        toast.error("You already have an active call. Please end it first.");
+      } else if (error.response?.status === 400 && error.response?.data?.message?.includes('not available')) {
+        toast.error("Psychic is not available for calls at the moment.");
+      } else if (error.response?.status === 404) {
+        toast.error("Psychic not found.");
+      } else if (error.response?.status === 403) {
+        toast.error("Insufficient credits to start a call.");
+      } else {
+        toast.error(error.response?.data?.message || "Failed to start audio call");
+      }
+    } finally {
+      setIsSubmitting(false);
     }
-  } catch (error) {
-    console.error("Error initiating audio call:", error);
-    
-    if (error.response?.status === 400 && error.response?.data?.message?.includes('already have an active call')) {
-      toast.error("You already have an active call. Please end it first.");
-    } else if (error.response?.status === 400 && error.response?.data?.message?.includes('not available')) {
-      toast.error("Psychic is not available for calls at the moment.");
-    } else if (error.response?.status === 404) {
-      toast.error("Psychic not found.");
-    } else if (error.response?.status === 403) {
-      toast.error("Insufficient credits to start a call.");
-    } else {
-      toast.error(error.response?.data?.message || "Failed to start audio call");
-    }
-  } finally {
-    setIsSubmitting(false);
-  }
-};
+  };
 
   // Fetch psychic rating summary
   const fetchPsychicRatingSummary = async (psychicId) => {
@@ -431,7 +433,10 @@ const initiateAudioCall = async (psychic) => {
     return status === 'online' || status === 'away';
   };
 
-  const handleShowMore = () => setShowing((prev) => Math.min(prev + 4, humanPsychics.length));
+  // Updated handleShowMore - redirect to psychics page
+  const handleShowMore = () => {
+    navigate("/psychics");
+  };
 
   // Handle psychic select function
   const handlePsychicSelect = async (psychic) => {
@@ -761,297 +766,339 @@ const initiateAudioCall = async (psychic) => {
         </div>
 
         <Tabs defaultValue="active">
-  <TabsContent value="active">
-    {isLoadingHumanPsychics ? (
-      <div className="flex justify-center p-12">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: colors.antiqueGold }}></div>
-      </div>
-    ) : humanPsychicsError ? (
-      <div className="text-center p-8">
-        <p className="text-red-600" style={{ color: colors.deepPurple }}>{humanPsychicsError}</p>
-      </div>
-    ) : humanPsychics.length === 0 ? (
-      <p className="text-center p-8" style={{ color: colors.deepPurple + "CC" }}>No human psychics available at the moment.</p>
-    ) : (
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-        {humanPsychics.slice(0, showing).map((psychic, i) => {
-          const psychicStatus = getPsychicStatus(psychic._id);
-          const gender = psychic.gender ? psychic.gender.charAt(0).toUpperCase() + psychic.gender.slice(1) : "Not specified";
-          const experience = psychic.experience || "0";
-          const specialization = psychic.specialization || "Psychic Reader";
-          const responseTime = psychic.responseTime ? `${psychic.responseTime} min` : "Instant";
-          const memberSince = psychic.createdAt ? new Date(psychic.createdAt).toLocaleDateString('en-US', { 
-            month: 'short', 
-            year: 'numeric' 
-          }) : "Recently";
+          <TabsContent value="active">
+            {isLoadingHumanPsychics ? (
+              <div className="flex justify-center p-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: colors.antiqueGold }}></div>
+              </div>
+            ) : humanPsychicsError ? (
+              <div className="text-center p-8">
+                <p className="text-red-600" style={{ color: colors.deepPurple }}>{humanPsychicsError}</p>
+              </div>
+            ) : humanPsychics.length === 0 ? (
+              <p className="text-center p-8" style={{ color: colors.deepPurple + "CC" }}>No human psychics available at the moment.</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
+ {humanPsychics.slice(0, showing).map((psychic, i) => {
+  const psychicStatus = getPsychicStatus(psychic._id);
+  const gender = psychic.gender ? psychic.gender.charAt(0).toUpperCase() + psychic.gender.slice(1) : "";
+  const experience = psychic.experience || "0";
+  const specialization = psychic.specialization || psychic.category || "Psychic";
+  
+  const responseTime = psychic.responseTime !== undefined && psychic.responseTime !== null
+    ? `${psychic.responseTime} min`
+    : "Instant";
+  
+  const memberSince = psychic.createdAt ? new Date(psychic.createdAt).toLocaleDateString('en-US', {
+    month: 'short',
+    year: 'numeric'
+  }) : "Recently";
+  
+  const category = psychic.category || "Reading";
+
+  const statusConfig = {
+    online: { color: '#10b981', label: 'Online', bg: '#10b98110', glow: '#10b98140' },
+    away:   { color: '#f59e0b', label: 'Away',   bg: '#f59e0b10', glow: '#f59e0b40' },
+    busy:   { color: '#f97316', label: 'Busy',   bg: '#f9731610', glow: '#f9731640' },
+    offline:{ color: '#9ca3af', label: 'Offline', bg: '#9ca3af10', glow: '#9ca3af40' },
+  };
+  const status = statusConfig[psychicStatus] || statusConfig.offline;
+
+  return (
+    <motion.div
+      key={psychic._id || i}
+      initial={{ opacity: 0, y: 30 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ 
+        delay: i * 0.1, 
+        duration: 0.5,
+        ease: [0.23, 1, 0.32, 1]
+      }}
+      className="relative group h-full"
+    >
+      {/* Decorative background glow on hover */}
+      <div 
+        className="absolute -inset-0.5 rounded-3xl opacity-0 group-hover:opacity-100 blur-xl transition-all duration-500"
+        style={{ 
+          background: `radial-gradient(circle at 30% 30%, ${colors.antiqueGold}40, transparent 70%)`,
+        }}
+      />
+      
+      <div
+        className="relative bg-white rounded-2xl overflow-hidden transition-all duration-300 h-full flex flex-col"
+        style={{
+          border: `1px solid ${colors.antiqueGold}20`,
+          boxShadow: `0 4px 20px ${colors.deepPurple}0d, 0 2px 8px ${colors.antiqueGold}10`,
+        }}
+      >
+        {/* Premium gradient header */}
+        <div 
+          className="h-16 bg-gradient-to-r from-[#2B1B3F] to-[#1A1129] relative overflow-hidden"
+        >
+          {/* Animated pattern */}
+          <div className="absolute inset-0 opacity-10">
+            <div className="absolute -right-10 -top-10 w-40 h-40 rounded-full bg-white/10" />
+            <div className="absolute -left-10 -bottom-10 w-32 h-32 rounded-full bg-white/5" />
+          </div>
           
-          return (
-            <motion.div
-              key={psychic._id || i}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="relative group"
+          {/* Status badge integrated into header */}
+          <div className="absolute bottom-3 right-4">
+            <div 
+              className="flex items-center gap-1.5 px-3 py-1 rounded-full backdrop-blur-sm"
+              style={{ 
+                backgroundColor: `${status.color}20`,
+                border: `1px solid ${status.color}30`,
+              }}
             >
-              <div className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+              <span className="relative flex h-2 w-2">
+                <span 
+                  className="animate-ping absolute inline-flex h-full w-full rounded-full opacity-75"
+                  style={{ backgroundColor: status.color }}
+                />
+                <span 
+                  className="relative inline-flex rounded-full h-2 w-2"
+                  style={{ backgroundColor: status.color }}
+                />
+              </span>
+              <span className="text-xs font-medium" style={{ color: status.color }}>
+                {status.label}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Profile section with overlapping image */}
+        <div className="relative px-5">
+          {/* Profile image - overlapping header */}
+          <div className="absolute -top-10 left-5">
+            <div className="relative">
+              <div 
+                className="w-20 h-20 rounded-2xl overflow-hidden ring-4 ring-white shadow-xl"
                 style={{ 
-                  background: `linear-gradient(135deg, ${colors.antiqueGold}, ${colors.deepPurple})`,
-                  transform: "translateY(10px) scale(1.02)"
-                }}></div>
-              <div className="relative bg-white rounded-2xl shadow-xl overflow-hidden transition-all duration-300 group-hover:-translate-y-2"
-                style={{ border: `1px solid ${colors.antiqueGold}30` }}>
-                
-                {/* Status & Verification Badge */}
-                <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
-                  {/* Status Badge */}
-                  <Badge className="px-3 py-1 rounded-full flex items-center gap-1"
-                    style={{ backgroundColor: getStatusBadgeColor(psychicStatus).split(' ')[0], color: 'white' }}>
-                    {getStatusIcon(psychicStatus)}
-                    <span className="text-xs font-medium">{getStatusText(psychicStatus)}</span>
-                  </Badge>
-                  
-                  {/* Human Badge */}
-                  <Badge className="px-2 py-1 rounded-full text-xs"
-                    style={{ 
-                      backgroundColor: colors.deepPurple + "10", 
-                      color: colors.deepPurple,
-                      border: `1px solid ${colors.deepPurple}30`
-                    }}>
-                    <User className="h-3 w-3 mr-1" />
-                    Human Psychic
-                  </Badge>
+                  border: `2px solid ${colors.antiqueGold}`,
+                }}
+              >
+                <img
+                  src={psychic.image}
+                  alt={psychic.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              {/* Verified badge if verified */}
+              {psychic.isVerified && (
+                <div className="absolute -bottom-1 -right-1 bg-emerald-500 rounded-full p-1 ring-2 ring-white">
+                  <CheckCircle className="h-3.5 w-3.5 text-white" />
                 </div>
-                
-                {/* Psychic Image */}
-                <div className="relative h-48 overflow-hidden">
-                  <img
-                    src={psychic.image}
-                    alt={psychic.name}
-                    className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent"></div>
-                  <div className="absolute bottom-4 left-4">
-                    <h3 className="text-2xl font-bold text-white">{psychic.name}</h3>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-sm text-white/90">{specialization}</p>
-                      {gender && (
-                        <Badge className="text-xs bg-white/20 text-white">
-                          {gender}
-                        </Badge>
-                      )}
-                    </div>
+              )}
+            </div>
+          </div>
+
+          {/* Name and rating - pushed right because of image */}
+          <div className="ml-24 pt-3">
+            <div className="flex items-start justify-between">
+              <div className="min-w-0 flex-1">
+                <h3 
+                  className="font-bold text-lg leading-tight truncate"
+                  style={{ color: colors.deepPurple }}
+                >
+                  {psychic.name}
+                </h3>
+                <p className="text-xs mt-0.5 truncate" style={{ color: colors.deepPurple + "B3" }}>
+                  {specialization}
+                </p>
+              </div>
+              {/* Rate pill */}
+              <div className="flex-shrink-0 ml-2">
+                <div 
+                  className="px-3 py-1.5 rounded-xl text-center"
+                  style={{ backgroundColor: colors.deepPurple }}
+                >
+                  <div className="text-sm font-bold leading-none" style={{ color: colors.antiqueGold }}>
+                    ${(psychic.ratePerMin || 1.00).toFixed(2)}
                   </div>
-                </div>
-                
-                {/* Details */}
-                <div className="p-6">
-                  {/* Rating and Rate per minute */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center">
-                      {Array(5).fill(0).map((_, i) => (
-                        <Star key={i} className="h-4 w-4" style={{ 
-                          color: i < Math.round(psychic.averageRating || psychic.rating?.avgRating || 4.5) ? colors.antiqueGold : "#E5E7EB",
-                          fill: i < Math.round(psychic.averageRating || psychic.rating?.avgRating || 4.5) ? colors.antiqueGold : "transparent"
-                        }} />
-                      ))}
-                      <span className="ml-2 text-sm" style={{ color: colors.deepPurple + "CC" }}>
-                        {(psychic.averageRating || psychic.rating?.avgRating || 4.5).toFixed(1)}
-                        <span className="text-xs ml-1">({psychic.totalRatings || psychic.rating?.totalReviews || "0+"})</span>
-                      </span>
-                    </div>
-                    
-                    {/* Rate per minute */}
-                    <div className="text-right">
-                      <div className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
-                        ${(psychic.ratePerMin || 1.00).toFixed(2)}
-                      </div>
-                      <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>per minute</div>
-                    </div>
-                  </div>
-                  
-                  {/* About Section */}
-                  <div className="mb-6">
-                    <h4 className="font-semibold mb-2 text-sm" style={{ color: colors.deepPurple + "CC" }}>About</h4>
-                    <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>
-                      {psychic.bio || `${psychic.name} is an experienced psychic specializing in ${specialization.toLowerCase()}.`}
-                    </p>
-                  </div>
-                  
-                  {/* Additional Info */}
-                  <div className="grid grid-cols-2 gap-3 mb-6">
-                    <div className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: colors.softIvory }}>
-                      <Clock className="h-3 w-3" style={{ color: colors.antiqueGold }} />
-                      <div>
-                        <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Response Time</div>
-                        <div className="text-sm font-medium" style={{ color: colors.deepPurple }}>{responseTime}</div>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-center gap-2 p-2 rounded" style={{ backgroundColor: colors.softIvory }}>
-                      <Users className="h-3 w-3" style={{ color: colors.antiqueGold }} />
-                      <div>
-                        <div className="text-xs" style={{ color: colors.deepPurple + "CC" }}>Experience</div>
-                        <div className="text-sm font-medium" style={{ color: colors.deepPurple }}>
-                          {experience === "0" ? "New" : `${experience}${experience === "0" ? "" : "+ years"}`}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Abilities/Languages */}
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {psychic.abilities && psychic.abilities.length > 0 ? (
-                      psychic.abilities.slice(0, 3).map((ability, idx) => (
-                        <Badge
-                          key={idx}
-                          className="px-2 py-1 rounded-full text-xs"
-                          style={{ 
-                            backgroundColor: colors.lightGold,
-                            color: colors.deepPurple
-                          }}
-                        >
-                          {ability}
-                        </Badge>
-                      ))
-                    ) : psychic.languages && psychic.languages.length > 0 ? (
-                      psychic.languages.slice(0, 2).map((language, idx) => (
-                        <Badge
-                          key={idx}
-                          className="px-2 py-1 rounded-full text-xs"
-                          style={{ 
-                            backgroundColor: colors.lightGold,
-                            color: colors.deepPurple
-                          }}
-                        >
-                          {language}
-                        </Badge>
-                      ))
-                    ) : (
-                      <Badge
-                        className="px-2 py-1 rounded-full text-xs"
-                        style={{ 
-                          backgroundColor: colors.lightGold,
-                          color: colors.deepPurple
-                        }}
-                      >
-                        Spiritual Guidance
-                      </Badge>
-                    )}
-                  </div>
-                  
-                  {/* Action Buttons Row */}
-                {/* Action Buttons Row */}
-{/* Action Buttons Row */}
-<div className="space-y-3">
-  {/* Chat & Call Buttons Row */}
-  <div className="grid grid-cols-2 gap-3">
-    {/* Chat Button */}
-    <Button
-      onClick={() => {
-        if (!user) {
-          toast.error("Please log in to chat with a psychic");
-          navigate("/login");
-          return;
-        }
-        handlePsychicSelect(psychic);
-      }}
-      disabled={isSubmitting || psychicStatus === 'offline' || psychicStatus === 'busy'}
-      className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
-      style={{ 
-        backgroundColor: colors.deepPurple,
-        color: colors.softIvory
-      }}
-    >
-      <MessageCircle className="mr-2 h-4 w-4" />
-      {psychicStatus === 'offline' || psychicStatus === 'busy'
-        ? (psychicStatus === 'offline' ? 'Offline' : 'Busy')
-        : 'Chat'}
-    </Button>
-    
-    {/* Call Button */}
-    <Button
-      onClick={() => {
-        if (!user) {
-          toast.error("Please log in to start a call");
-          navigate("/login");
-          return;
-        }
-        initiateAudioCall(psychic);
-      }}
-      disabled={isSubmitting}
-      className="w-full rounded-full py-3 font-medium transition-all hover:opacity-90"
-      style={{ 
-        backgroundColor: colors.antiqueGold,
-        color: colors.deepPurple
-      }}
-    >
-      <Phone className="mr-2 h-4 w-4" />
-      Call
-    </Button>
-  </div>
-  
-  {/* Rate Info */}
-  <div className="text-center text-sm" style={{ color: colors.deepPurple + "CC" }}>
-    ${(psychic.ratePerMin || 1.00).toFixed(2)}/min for both chat & call
-  </div>
-  
-  {/* View Profile Button */}
-  <Button
-    variant="outline"
-    onClick={() => navigate(`/psychic/${psychic._id}`)}
-    className="w-full rounded-full py-3 font-medium border-2 transition-all hover:opacity-90"
-    style={{ 
-      borderColor: colors.antiqueGold,
-      color: colors.deepPurple
-    }}
-  >
-    <User className="mr-2 h-4 w-4" />
-    View Full Profile
-  </Button>
-</div>
-                  {/* Status Message */}
-                  {(psychicStatus === 'offline' || psychicStatus === 'busy') && (
-                    <p className="text-xs text-gray-500 mt-2 text-center">
-                      {psychicStatus === 'offline'
-                        ? "This psychic is currently offline. You can still view their profile."
-                        : "This psychic is currently busy. Please try again later."}
-                    </p>
-                  )}
-                  
-                  {/* Member Since */}
-                  {psychic.createdAt && (
-                    <div className="pt-4 mt-4 border-t text-center text-xs" 
-                      style={{ borderColor: colors.antiqueGold + "30", color: colors.deepPurple + "CC" }}>
-                      Member since {memberSince}
-                    </div>
-                  )}
+                  <div className="text-[8px] mt-0.5 opacity-70" style={{ color: colors.softIvory }}>/min</div>
                 </div>
               </div>
-            </motion.div>
-          );
-        })}
+            </div>
+
+            {/* Rating stars */}
+            <div className="flex items-center gap-2 mt-2">
+              <div className="flex gap-0.5">
+                {Array(5).fill(0).map((_, j) => (
+                  <Star key={j} className="h-3.5 w-3.5" style={{
+                    color: j < Math.round(psychic.averageRating || 4.5) ? colors.antiqueGold : "#E5E7EB",
+                    fill: j < Math.round(psychic.averageRating || 4.5) ? colors.antiqueGold : "transparent"
+                  }} />
+                ))}
+              </div>
+              <span className="text-xs font-medium" style={{ color: colors.deepPurple }}>
+                {(psychic.averageRating || 4.5).toFixed(1)}
+              </span>
+              <span className="text-[10px]" style={{ color: colors.deepPurple + "99" }}>
+                ({psychic.totalRatings || 0})
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Category badges */}
+        <div className="flex flex-wrap gap-1.5 px-5 mt-4">
+          <span
+            className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-medium"
+            style={{ 
+              backgroundColor: colors.antiqueGold + "12",
+              color: colors.antiqueGold,
+              border: `1px solid ${colors.antiqueGold}25`
+            }}
+          >
+            {category}
+          </span>
+          <span
+            className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-[11px] font-medium"
+            style={{ 
+              backgroundColor: colors.deepPurple + "08",
+              color: colors.deepPurple,
+              border: `1px solid ${colors.deepPurple}15`
+            }}
+          >
+            <User className="h-3 w-3" />
+            Human
+          </span>
+          {gender && (
+            <span
+              className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-medium"
+              style={{ 
+                backgroundColor: colors.lightGold + "50",
+                color: colors.deepPurple,
+                border: `1px solid ${colors.antiqueGold}25`
+              }}
+            >
+              {gender}
+            </span>
+          )}
+        </div>
+
+        {/* Stats grid - clean minimal design */}
+        <div className="grid grid-cols-3 gap-px mx-5 mt-4 rounded-xl overflow-hidden" 
+          style={{ backgroundColor: colors.antiqueGold + "15" }}>
+          <div className="py-2.5 text-center bg-white/80">
+            <div className="text-xs font-semibold" style={{ color: colors.deepPurple }}>{responseTime}</div>
+            <div className="text-[9px] mt-0.5" style={{ color: colors.deepPurple + "99" }}>Response</div>
+          </div>
+          <div className="py-2.5 text-center bg-white/80">
+            <div className="text-xs font-semibold" style={{ color: colors.deepPurple }}>
+              {experience === "0" ? "New" : `${experience}y`}
+            </div>
+            <div className="text-[9px] mt-0.5" style={{ color: colors.deepPurple + "99" }}>Experience</div>
+          </div>
+          <div className="py-2.5 text-center bg-white/80">
+            <div className="text-xs font-semibold" style={{ color: colors.deepPurple }}>{memberSince}</div>
+            <div className="text-[9px] mt-0.5" style={{ color: colors.deepPurple + "99" }}>Joined</div>
+          </div>
+        </div>
+
+        {/* Bio - elegant with subtle background */}
+        <div className="mx-5 mt-4 p-3 rounded-xl" style={{ backgroundColor: colors.softIvory + "80" }}>
+          <p className="text-[11px] leading-relaxed line-clamp-2" style={{ color: colors.deepPurple + "CC" }}>
+            {psychic.bio || `Specializes in ${category.toLowerCase()} guidance. Compassionate and insightful readings.`}
+          </p>
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex gap-2 px-5 py-4 mt-auto border-t" style={{ borderColor: colors.antiqueGold + "15" }}>
+          <Button
+            onClick={() => {
+              if (!user) { toast.error("Please log in"); navigate("/login"); return; }
+              handlePsychicSelect(psychic);
+            }}
+            disabled={isSubmitting || psychicStatus === 'offline' || psychicStatus === 'busy'}
+            className="flex-1 h-9 rounded-xl text-xs font-semibold gap-1.5 transition-all hover:scale-105"
+            style={{ 
+              backgroundColor: colors.deepPurple,
+              color: colors.softIvory,
+              opacity: (isSubmitting || psychicStatus === 'offline' || psychicStatus === 'busy') ? 0.5 : 1
+            }}
+          >
+            <MessageCircle className="h-3.5 w-3.5" />
+            Chat
+          </Button>
+
+          <Button
+            onClick={() => {
+              if (!user) { toast.error("Please log in"); navigate("/login"); return; }
+              initiateAudioCall(psychic);
+            }}
+            disabled={isSubmitting || psychicStatus === 'offline' || psychicStatus === 'busy'}
+            className="flex-1 h-9 rounded-xl text-xs font-semibold gap-1.5 transition-all hover:scale-105"
+            style={{ 
+              backgroundColor: colors.antiqueGold,
+              color: colors.deepPurple,
+              opacity: (isSubmitting || psychicStatus === 'offline' || psychicStatus === 'busy') ? 0.5 : 1
+            }}
+          >
+            <Phone className="h-3.5 w-3.5" />
+            Call
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => navigate(`/psychic/${psychic._id}`)}
+            className="h-9 w-9 p-0 rounded-xl border-2 transition-all hover:scale-105 hover:border-2"
+            style={{ 
+              borderColor: colors.antiqueGold + "40",
+              color: colors.deepPurple,
+              backgroundColor: 'white'
+            }}
+          >
+            <User className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-    )}
-    
-    {showing < humanPsychics.length && (
-      <div className="flex justify-center items-center">
-        <Button
-          onClick={handleShowMore}
-          size="lg"
-          className="rounded-full px-8 py-6 text-lg font-semibold transition-all hover:scale-105 shadow-lg"
-          style={{ 
-            backgroundColor: colors.antiqueGold,
-            color: colors.deepPurple,
-            boxShadow: `0 10px 40px ${colors.antiqueGold}40`
-          }}
-        >
-          <Sparkles className="mr-3 h-5 w-5" />
-          Show More Psychics
-        </Button>
-      </div>
-    )}
-  </TabsContent>
-</Tabs>
+    </motion.div>
+  );
+})}
+              </div>
+            )}
+            
+            {/* Show More Button - Always redirects to /psychics page */}
+            {humanPsychics.length > 6 && (
+              <div className="flex justify-center items-center">
+                <Button
+                  onClick={handleShowMore}
+                  size="lg"
+                  className="rounded-full px-8 py-6 text-lg font-semibold transition-all hover:scale-105 shadow-lg"
+                  style={{ 
+                    backgroundColor: colors.antiqueGold,
+                    color: colors.deepPurple,
+                    boxShadow: `0 10px 40px ${colors.antiqueGold}40`
+                  }}
+                >
+                  <Sparkles className="mr-3 h-5 w-5" />
+                  View All Psychics ({humanPsychics.length - 6} more)
+                </Button>
+              </div>
+            )}
+            
+            {/* If exactly 6 psychics, show button to view all on psychics page */}
+            {humanPsychics.length === 6 && (
+              <div className="flex justify-center items-center">
+                <Button
+                  onClick={() => navigate("/psychics")}
+                  size="lg"
+                  className="rounded-full px-8 py-6 text-lg font-semibold transition-all hover:scale-105 shadow-lg"
+                  style={{ 
+                    backgroundColor: colors.antiqueGold,
+                    color: colors.deepPurple,
+                    boxShadow: `0 10px 40px ${colors.antiqueGold}40`
+                  }}
+                >
+                  <Sparkles className="mr-3 h-5 w-5" />
+                  View All Psychics
+                </Button>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
      
       {/* Comprehensive Features Section */}

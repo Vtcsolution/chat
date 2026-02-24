@@ -657,78 +657,141 @@ const getCallWithDetails = async (req, res) => {
 // Accept a call request - SIMPLIFIED (no middleware)
 
 
-// Reject a call request - SIMPLIFIED (no middleware)
 const rejectCall = async (req, res) => {
   try {
     console.log('❌ Rejecting call request...');
     
     const { callRequestId } = req.params;
     const { reason } = req.body;
+    const psychicId = req.user._id; // Using the authenticated user from protectPsychic middleware
     
-    // Get token from anywhere
-    const token = req.cookies?.token || 
-                  req.headers.authorization?.split(' ')[1] || 
-                  req.query.token;
+    console.log(`🎯 Psychic ${psychicId} rejecting call ${callRequestId}`);
     
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Please login first'
+    // First, try to find in ActiveCallSession (where your calls are stored)
+    let activeSession = await ActiveCallSession.findOne({
+      $or: [
+        { _id: callRequestId },
+        { callRequestId: callRequestId },
+        { callIdentifier: callRequestId }
+      ]
+    }).populate('userId');
+    
+    // If not found in ActiveCallSession, try CallRequest
+    if (!activeSession) {
+      console.log('❌ Call not found in ActiveCallSession, trying CallRequest...');
+      
+      const callRequest = await CallRequest.findById(callRequestId)
+        .populate('userId');
+      
+      if (!callRequest) {
+        return res.status(404).json({
+          success: false,
+          message: 'Call not found'
+        });
+      }
+      
+      // Verify psychic owns this request
+      if (callRequest.psychicId.toString() !== psychicId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: 'Not authorized to reject this call'
+        });
+      }
+      
+      // Check if already responded
+      if (callRequest.status !== 'pending') {
+        return res.status(400).json({
+          success: false,
+          message: `Call already ${callRequest.status}`
+        });
+      }
+      
+      // Update call request
+      callRequest.status = 'rejected';
+      callRequest.rejectionReason = reason || 'Psychic not available';
+      callRequest.respondedAt = new Date();
+      await callRequest.save();
+      
+      // Also update any active session that might exist
+      await ActiveCallSession.findOneAndUpdate(
+        { 
+          $or: [
+            { callRequestId: callRequest._id },
+            { userId: callRequest.userId, psychicId: callRequest.psychicId }
+          ]
+        },
+        {
+          status: 'rejected',
+          endReason: 'psychic_rejected',
+          endTime: new Date()
+        }
+      );
+      
+      // Update psychic status
+      await Psychic.findByIdAndUpdate(psychicId, {
+        status: 'online',
+        lastActive: new Date()
+      });
+      
+      // Notify user via socket
+      const io = req.app.get('io');
+      if (io && callRequest.userId) {
+        const audioNamespace = io.of('/audio-calls');
+        audioNamespace.to(callRequest.userId.toString()).emit('call-rejected', {
+          callRequestId: callRequest._id,
+          reason: reason || 'Psychic rejected the call',
+          psychicId
+        });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Call rejected successfully'
       });
     }
     
-    // Decode token to get psychic info
-    const decoded = jwt.decode(token);
+    // Handle the case where we found an ActiveCallSession
+    console.log('✅ Found call in ActiveCallSession:', activeSession._id);
     
-    // Find psychic by email
-    const psychic = await Psychic.findOne({ 
-      email: decoded?.email || 'ranazia943@gmail.com' 
-    });
-    
-    if (!psychic) {
-      return res.status(404).json({
-        success: false,
-        message: 'Psychic not found'
-      });
-    }
-    
-    const psychicId = psychic._id;
-    
-    // Find call request
-    const callRequest = await CallRequest.findById(callRequestId)
-      .populate('userId');
-    
-    if (!callRequest) {
-      return res.status(404).json({
-        success: false,
-        message: 'Call request not found'
-      });
-    }
-    
-    // Verify psychic owns this request
-    if (callRequest.psychicId.toString() !== psychicId.toString()) {
+    // Verify psychic owns this session
+    if (activeSession.psychicId.toString() !== psychicId.toString()) {
       return res.status(403).json({
         success: false,
         message: 'Not authorized to reject this call'
       });
     }
     
-    // Update call request
-    callRequest.status = 'rejected';
-    callRequest.rejectionReason = reason || 'No reason provided';
-    callRequest.respondedAt = new Date();
-    await callRequest.save();
+    // Check if already responded
+    if (activeSession.status !== 'initiated' && activeSession.status !== 'ringing') {
+      return res.status(400).json({
+        success: false,
+        message: `Call already ${activeSession.status}`
+      });
+    }
     
-    // Find and update active session
-    await ActiveCallSession.findOneAndUpdate({
-      userId: callRequest.userId,
-      psychicId: callRequest.psychicId,
-      status: 'initiated'
-    }, {
-      status: 'rejected',
-      endReason: 'psychic_rejected',
-      endTime: new Date()
-    }, { new: true });
+    // Update active session
+    activeSession.status = 'rejected';
+    activeSession.endReason = 'psychic_rejected';
+    activeSession.endTime = new Date();
+    activeSession.endedBy = 'psychic';
+    
+    // Add rejection reason to metadata
+    activeSession.metadata = {
+      ...(activeSession.metadata || {}),
+      rejectionReason: reason || 'Not available',
+      rejectedAt: new Date()
+    };
+    
+    await activeSession.save();
+    
+    // Update any associated CallRequest
+    if (activeSession.callRequestId) {
+      await CallRequest.findByIdAndUpdate(activeSession.callRequestId, {
+        status: 'rejected',
+        rejectionReason: reason || 'Psychic not available',
+        respondedAt: new Date()
+      });
+    }
     
     // Update psychic status
     await Psychic.findByIdAndUpdate(psychicId, {
@@ -736,25 +799,40 @@ const rejectCall = async (req, res) => {
       lastActive: new Date()
     });
     
-    // Notify user via socket if available
-    if (io) {
+    // Notify user via socket
+    const io = req.app.get('io');
+    if (io && activeSession.userId) {
       const audioNamespace = io.of('/audio-calls');
-      const userSocketId = callRequest.userId.socketId;
       
-      if (userSocketId && audioNamespace) {
-        audioNamespace.to(userSocketId).emit('call-rejected', {
-          callRequestId: callRequest._id,
+      // Try to notify by userId
+      audioNamespace.to(activeSession.userId.toString()).emit('call-rejected', {
+        callRequestId: activeSession._id,
+        callSessionId: activeSession._id,
+        reason: reason || 'Psychic rejected the call',
+        psychicId
+      });
+      
+      // Also try to notify by room if available
+      if (activeSession.roomName) {
+        audioNamespace.to(activeSession.roomName).emit('call-rejected', {
+          callRequestId: activeSession._id,
+          callSessionId: activeSession._id,
           reason: reason || 'Psychic rejected the call',
           psychicId
         });
-        console.log('✅ Sent call-rejected socket event to user');
       }
+      
+      console.log('✅ Sent call-rejected socket events');
     }
     
     res.status(200).json({
       success: true,
       message: 'Call rejected successfully',
-      rejectionReason: reason || 'No reason provided'
+      data: {
+        callId: activeSession._id,
+        status: 'rejected',
+        rejectionReason: reason || 'Not available'
+      }
     });
     
   } catch (error) {
@@ -762,7 +840,7 @@ const rejectCall = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to reject call',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -1454,40 +1532,135 @@ const getUserCallHistory = async (req, res) => {
   }
 };
 
-// 8. Get Psychic's Call History
-// In callController.js - Simplified psychic call history
-// In callController.js - Verify this function exists
+
 const getPsychicCallHistory = async (req, res) => {
   try {
     console.log('📋 Getting psychic call history for:', req.user.name);
     
     const psychicId = req.user._id;
-    const { page = 1, limit = 10 } = req.query;
+    const { page = 1, limit = 20, status } = req.query;
     
     const skip = (page - 1) * limit;
     
-    console.log('Query params:', { page, limit, skip });
+    console.log('Query params:', { page, limit, skip, status });
     
-    // Get archived calls from CallSession
+    // Build query for ActiveCallSession (where your data actually is)
+    let query = { psychicId };
+    
+    // Add status filter if provided
+    if (status && status !== 'all') {
+      query.status = status;
+    } else {
+      // Exclude 'initiated' and 'ringing' from history (these are active/pending)
+      query.status = { $nin: ['initiated', 'ringing'] };
+    }
+    
+    console.log('Query:', JSON.stringify(query));
+    
+    // Get call history from ActiveCallSession (this is where your data is stored)
     const [calls, total] = await Promise.all([
-      CallSession.find({ psychicId })
-        .populate('userId', 'firstName lastName image email')
+      ActiveCallSession.find(query)
+        .populate('userId', 'username firstName lastName image email')
+        .populate('psychicId', 'name email image ratePerMin')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .lean(),
-      CallSession.countDocuments({ psychicId })
+      ActiveCallSession.countDocuments(query)
     ]);
     
-    console.log(`Found ${calls.length} call history records out of ${total} total`);
+    console.log(`Found ${calls.length} call records out of ${total} total`);
+    
+    // Get associated CallRequest for additional data
+    const callRequestIds = calls
+      .map(call => call.callRequestId)
+      .filter(id => id); // Remove null/undefined
+    
+    const callRequests = await CallRequest.find({
+      _id: { $in: callRequestIds }
+    }).lean();
+    
+    // Create a map of call requests
+    const callRequestMap = {};
+    callRequests.forEach(cr => {
+      callRequestMap[cr._id.toString()] = cr;
+    });
     
     // Format the response
-    const formattedCalls = calls.map(call => ({
-      ...call,
-      durationFormatted: formatDuration(call.durationSeconds),
-      earnings: ((call.durationSeconds || 0) / 60 * (call.ratePerMin || 0)).toFixed(2),
-      dateFormatted: new Date(call.createdAt).toLocaleDateString()
-    }));
+    const formattedCalls = calls.map(call => {
+      const callRequest = call.callRequestId ? callRequestMap[call.callRequestId.toString()] : null;
+      
+      // Calculate duration
+      let durationSeconds = 0;
+      
+      if (call.totalCreditsUsed) {
+        durationSeconds = call.totalCreditsUsed * 60; // credits used = minutes
+      } else if (call.startTime && call.endTime) {
+        durationSeconds = Math.floor((new Date(call.endTime) - new Date(call.startTime)) / 1000);
+      }
+      
+      // Calculate earnings (using 25% commission for psychic)
+      const ratePerMin = call.ratePerMin || callRequest?.ratePerMin || 1;
+      const totalPaid = (durationSeconds / 60) * ratePerMin;
+      const psychicEarnings = totalPaid * 0.25; // 25% to psychic
+      
+      return {
+        _id: call._id,
+        callSessionId: call._id,
+        callRequestId: call.callRequestId,
+        status: call.status,
+        ratePerMin: ratePerMin,
+        creditsPerMin: call.creditsPerMin || 1,
+        requestedAt: callRequest?.requestedAt || call.createdAt,
+        startedAt: call.startTime,
+        endedAt: call.endTime,
+        expiresAt: callRequest?.expiresAt,
+        durationSeconds,
+        totalPaid,
+        psychicEarnings,
+        platformEarnings: totalPaid * 0.75,
+        endReason: call.endReason,
+        isFreeSession: call.isFreeSession || false,
+        userId: call.userId ? {
+          _id: call.userId._id,
+          username: call.userId.username || 'Unknown',
+          firstName: call.userId.firstName || '',
+          lastName: call.userId.lastName || '',
+          image: call.userId.image || '',
+          email: call.userId.email || ''
+        } : null,
+        psychicId: call.psychicId ? {
+          _id: call.psychicId._id,
+          name: call.psychicId.name || 'Unknown',
+          email: call.psychicId.email || '',
+          image: call.psychicId.image || '',
+          ratePerMin: call.psychicId.ratePerMin || 1
+        } : null,
+        createdAt: call.createdAt,
+        updatedAt: call.updatedAt,
+        // Formatted fields for display
+        durationFormatted: formatDuration(durationSeconds),
+        earningsFormatted: `$${psychicEarnings.toFixed(2)}`,
+        totalPaidFormatted: `$${totalPaid.toFixed(2)}`,
+        dateFormatted: new Date(call.createdAt).toLocaleDateString()
+      };
+    });
+    
+    // Calculate summary statistics
+    const summary = {
+      total: total,
+      initiated: calls.filter(c => c.status === 'initiated').length,
+      ringing: calls.filter(c => c.status === 'ringing').length,
+      'in-progress': calls.filter(c => c.status === 'in-progress').length,
+      ended: calls.filter(c => c.status === 'ended').length,
+      completed: calls.filter(c => c.status === 'completed').length,
+      rejected: calls.filter(c => c.status === 'rejected').length,
+      failed: calls.filter(c => c.status === 'failed').length,
+      totalEarnings: formattedCalls.reduce((sum, call) => sum + (call.psychicEarnings || 0), 0),
+      totalDuration: formattedCalls.reduce((sum, call) => sum + (call.durationSeconds || 0), 0)
+    };
+    
+    console.log('✅ Sending response with summary:', summary);
     
     res.status(200).json({
       success: true,
@@ -1499,7 +1672,8 @@ const getPsychicCallHistory = async (req, res) => {
           limit: parseInt(limit),
           total,
           pages: Math.ceil(total / limit)
-        }
+        },
+        summary
       }
     });
     
@@ -1512,7 +1686,6 @@ const getPsychicCallHistory = async (req, res) => {
     });
   }
 };
-
 // Helper function
 const formatDuration = (seconds) => {
   if (!seconds) return '0:00';
@@ -1798,7 +1971,6 @@ const getPsychicActiveCall = async (req, res) => {
 
 
 
-// Get psychic pending calls - UPDATED with timer logic (NO NAME CHANGE)
 const getPsychicPendingCalls = async (req, res) => {
   try {
     console.log('📞 [PENDING CONTROLLER] Getting pending calls...');
@@ -1814,18 +1986,18 @@ const getPsychicPendingCalls = async (req, res) => {
     
     const psychicId = req.user._id;
     
-    // Query for pending calls
+    // Query for pending calls in ActiveCallSession
     const query = {
       psychicId,
-      status: 'pending'
+      status: 'initiated' // Pending calls are in 'initiated' status
     };
     
     console.log('Query:', JSON.stringify(query, null, 2));
     
-    // Get pending calls
-    const pendingCalls = await CallRequest.find(query)
-      .populate('userId', 'firstName lastName image email phone')
-      .sort({ requestedAt: -1 })
+    // Get pending calls with user data
+    const pendingCalls = await ActiveCallSession.find(query)
+      .populate('userId', 'username firstName lastName image email phone')
+      .sort({ createdAt: -1 })
       .lean();
     
     console.log(`✅ Found ${pendingCalls.length} pending calls in database`);
@@ -1845,47 +2017,55 @@ const getPsychicPendingCalls = async (req, res) => {
       });
     }
     
-    // Filter out expired calls manually and calculate time remaining
+    // Calculate time remaining for each call
     const now = new Date();
     const validCalls = [];
     
     for (const call of pendingCalls) {
-      let timeRemaining = null;
-      let isExpired = false;
+      // Check if call has expired (older than 30 seconds)
+      const createdAt = new Date(call.createdAt);
+      const ageInSeconds = Math.floor((now - createdAt) / 1000);
+      const timeRemaining = Math.max(0, 30 - ageInSeconds);
+      const isExpired = timeRemaining === 0;
       
-      if (call.expiresAt) {
-        const expiresAt = new Date(call.expiresAt);
-        timeRemaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
-        isExpired = timeRemaining === 0;
-        
-        if (isExpired) {
-          console.log(`Call ${call._id} expired at ${expiresAt}`);
-          // Update status to expired in database
-          await CallRequest.findByIdAndUpdate(call._id, { status: 'expired' });
-          
-          // Emit socket event
-          const io = req.app.get('io');
-          if (io) {
-            const audioNamespace = io.of('/audio-calls');
-            audioNamespace.to(psychicId.toString()).emit('call-expired', {
-              callRequestId: call._id,
-              message: 'Call request expired'
-            });
-          }
-          continue; // Skip expired calls
-        }
+      if (isExpired) {
+        console.log(`Call ${call._id} expired`);
+        // Update status to expired in database
+        await ActiveCallSession.findByIdAndUpdate(call._id, { 
+          status: 'expired',
+          endTime: now,
+          endReason: 'timeout'
+        });
+        continue; // Skip expired calls
       }
       
+      // Format user data
+      const userData = call.userId ? {
+        _id: call.userId._id,
+        username: call.userId.username || 'Unknown',
+        firstName: call.userId.firstName || '',
+        lastName: call.userId.lastName || '',
+        image: call.userId.image || '',
+        email: call.userId.email || ''
+      } : null;
+      
       validCalls.push({
-        ...call,
+        _id: call._id,
+        callRequestId: call._id,
+        callSessionId: call._id,
+        user: userData,
+        userId: userData,
+        ratePerMin: call.ratePerMin || 1,
+        creditsPerMin: call.creditsPerMin || 1,
+        requestedAt: call.createdAt,
+        expiresAt: new Date(createdAt.getTime() + 30000).toISOString(),
         timeRemaining,
-        expiresAt: call.expiresAt ? new Date(call.expiresAt).toISOString() : null,
-        requestedAt: new Date(call.requestedAt).toISOString(),
-        _id: call._id.toString()
+        isFreeSession: call.isFreeSession || false,
+        status: 'pending'
       });
     }
     
-    console.log(`✅ ${validCalls.length} valid (non-expired) pending calls with timers`);
+    console.log(`✅ ${validCalls.length} valid (non-expired) pending calls`);
     
     res.status(200).json({
       success: true,

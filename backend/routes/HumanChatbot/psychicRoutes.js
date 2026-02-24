@@ -20,8 +20,13 @@ const {
   adminCreatePsychic,
   getPsychicCategories,
   getPsychicStatuses,
+  forgotPasswordPsychic,
+
   adminToggleVerifyPsychic,
   getPsychicStatusesFast,
+  resetPasswordPsychic,
+  verifyResetTokenPsychic,
+  updatePasswordPsychic,
   updatePsychicStatus
 } = require('../../controllers/HumanChatbot/psychicController');
 const { protectPsychic } = require('../../middleware/PsychicMiddleware');
@@ -34,7 +39,12 @@ router.post('/register', registerPsychic);
 router.post('/login', loginPsychic);
 router.get('/', getAllPsychics); // Public: Get all verified psychics
 router.get('/categories', getPsychicCategories);
+router.post('/forgot-password', forgotPasswordPsychic);
+router.put('/reset-password/:resetToken', resetPasswordPsychic);
+router.get('/verify-reset-token/:resetToken', verifyResetTokenPsychic);
 
+// Private route (requires auth)
+router.put('/update-password', protectPsychic, updatePasswordPsychic);
 // ========== PSYCHIC PROTECTED ROUTES ==========
 router.get('/analytics', protectPsychic, getPsychicChatAnalytics);
 router.get('/stats', protectPsychic, getPsychicChatStats);
