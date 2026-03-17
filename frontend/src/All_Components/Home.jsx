@@ -23,15 +23,44 @@ const Home = () => {
   const socketRef = useRef(null);
   const [socketConnected, setSocketConnected] = useState(false);
   const subscribedPsychicsRef = useRef(new Set());
+  
+  // Add state for CMS content
+  const [homeContent, setHomeContent] = useState(null);
+  const [contentLoading, setContentLoading] = useState(true);
 
-  // Color scheme
-  const colors = {
+  // Color scheme - will be updated from CMS
+  const [colors, setColors] = useState({
     deepPurple: "#2B1B3F",
     antiqueGold: "#C9A24D",
     softIvory: "#F5F3EB",
     lightGold: "#E8D9B0",
     darkPurple: "#1A1129",
-  };
+  });
+
+  // Fetch home page content from CMS
+  useEffect(() => {
+    const fetchHomeContent = async () => {
+      try {
+        setContentLoading(true);
+        const response = await axios.get(`${import.meta.env.VITE_BASE_URL}/api/home`);
+        
+        if (response.data.success) {
+          setHomeContent(response.data.data);
+          // Update colors if they exist in CMS
+          if (response.data.data.colors) {
+            setColors(response.data.data.colors);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching home content:', error);
+        // Don't show error toast, just use default content
+      } finally {
+        setContentLoading(false);
+      }
+    };
+
+    fetchHomeContent();
+  }, []);
 
   // Fetch human psychics data with ratings - fetch ALL psychics
   useEffect(() => {
@@ -519,6 +548,15 @@ const Home = () => {
     }
   };
 
+  // Show loading state while fetching CMS content
+  if (contentLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: colors.softIvory }}>
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2" style={{ borderColor: colors.antiqueGold }}></div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.softIvory }}>
       {/* Enhanced Hero Section */}
@@ -566,21 +604,26 @@ const Home = () => {
               <div className="inline-flex items-center gap-2 mb-6 px-4 py-2 rounded-full" 
                 style={{ backgroundColor: colors.antiqueGold + "20", color: colors.antiqueGold }}>
                 <Sparkles className="h-4 w-4" />
-                <span className="text-sm font-medium">Trusted by Thousands Worldwide</span>
+                <span className="text-sm font-medium">
+                  {homeContent?.hero?.badge || "Trusted by Thousands Worldwide"}
+                </span>
               </div>
               
               <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold mb-6 leading-tight">
-                <span className="block" style={{ color: colors.softIvory }}>Discover Your</span>
+                <span className="block" style={{ color: colors.softIvory }}>
+                  {homeContent?.hero?.title?.line1 || "Discover Your"}
+                </span>
                 <span style={{ 
                   background: `linear-gradient(135deg, ${colors.antiqueGold}, #FFD700)`,
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent"
-                }}>Spiritual Path</span>
+                }}>
+                  {homeContent?.hero?.title?.line2 || "Spiritual Path"}
+                </span>
               </h1>
               
               <p className="text-xl mb-8 opacity-90 leading-relaxed" style={{ color: colors.softIvory }}>
-                Connect with gifted, certified psychics for personalized guidance, clarity, and spiritual growth. 
-                Experience authentic connections that illuminate your life's journey.
+                {homeContent?.hero?.description || "Connect with gifted, certified psychics for personalized guidance, clarity, and spiritual growth. Experience authentic connections that illuminate your life's journey."}
               </p>
               
               <div className="flex flex-col sm:flex-row gap-4 mb-12">
@@ -605,7 +648,7 @@ const Home = () => {
                   }}
                 >
                   <Sparkles className="mr-3 h-5 w-5" />
-                  Start Chatting Now
+                  {homeContent?.hero?.buttons?.primary?.text || "Start Chatting Now"}
                 </Button>
                 
                 <Button
@@ -620,28 +663,44 @@ const Home = () => {
                   onClick={() => navigate("/register")}
                 >
                   <Heart className="mr-3 h-5 w-5" />
-                  Begin Free Trial
+                  {homeContent?.hero?.buttons?.secondary?.text || "Begin Free Trial"}
                 </Button>
               </div>
 
               {/* Trust Indicators */}
               <div className="flex flex-wrap gap-6 items-center">
-                <div className="flex items-center gap-2">
-                  <div className="flex">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="h-4 w-4" style={{ color: colors.antiqueGold, fill: colors.antiqueGold }} />
-                    ))}
+                {homeContent?.hero?.trustIndicators?.map((indicator, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <div className="flex">
+                      {indicator.icon === 'star' && [...Array(5)].map((_, i) => (
+                        <Star key={i} className="h-4 w-4" style={{ color: colors.antiqueGold, fill: colors.antiqueGold }} />
+                      ))}
+                      {indicator.icon === 'users' && <Users className="h-4 w-4" style={{ color: colors.antiqueGold }} />}
+                      {indicator.icon === 'globe' && <Globe className="h-4 w-4" style={{ color: colors.antiqueGold }} />}
+                    </div>
+                    <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>{indicator.text}</span>
                   </div>
-                  <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>4.9/5 Rating</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Users className="h-4 w-4" style={{ color: colors.antiqueGold }} />
-                  <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>10,000+ Satisfied Clients</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" style={{ color: colors.antiqueGold }} />
-                  <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>Global Community</span>
-                </div>
+                ))}
+                {!homeContent?.hero?.trustIndicators && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <div className="flex">
+                        {[...Array(5)].map((_, i) => (
+                          <Star key={i} className="h-4 w-4" style={{ color: colors.antiqueGold, fill: colors.antiqueGold }} />
+                        ))}
+                      </div>
+                      <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>4.9/5 Rating</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4" style={{ color: colors.antiqueGold }} />
+                      <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>10,000+ Satisfied Clients</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4" style={{ color: colors.antiqueGold }} />
+                      <span className="text-sm" style={{ color: colors.softIvory + "CC" }}>Global Community</span>
+                    </div>
+                  </>
+                )}
               </div>
             </motion.div>
 
@@ -678,7 +737,9 @@ const Home = () => {
                       </div>
                       <div>
                         <h3 className="text-xl font-bold" style={{ color: colors.softIvory }}>{humanPsychics[0].name}</h3>
-                        <p className="text-sm" style={{ color: colors.antiqueGold }}>Top-Rated Psychic</p>
+                        <p className="text-sm" style={{ color: colors.antiqueGold }}>
+                          {homeContent?.hero?.featuredPsychic?.title || "Top-Rated Psychic"}
+                        </p>
                         <div className="flex items-center mt-1">
                           <Star className="h-3 w-3" style={{ color: colors.antiqueGold, fill: colors.antiqueGold }} />
                           <span className="text-xs ml-1" style={{ color: colors.softIvory + "CC" }}>
@@ -688,7 +749,8 @@ const Home = () => {
                       </div>
                     </div>
                     <p className="text-sm mb-6" style={{ color: colors.softIvory + "CC" }}>
-                      "I've helped over 500 clients find clarity and direction in their lives. Let me guide you on your spiritual journey."
+                      {homeContent?.hero?.featuredPsychic?.quote || 
+                       `"I've helped over 500 clients find clarity and direction in their lives. Let me guide you on your spiritual journey."`}
                     </p>
                     <Button 
                       className="w-full rounded-full py-4"
@@ -730,19 +792,22 @@ const Home = () => {
       <div className="py-12 px-4" style={{ backgroundColor: colors.lightGold }}>
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-            {[
-              { icon: <Shield />, title: "100% Secure", desc: "End-to-end encryption" },
-              { icon: <Lock />, title: "Private", desc: "Confidential sessions" },
-              { icon: <CheckCircle />, title: "Verified", desc: "Certified psychics" },
-              { icon: <Clock />, title: "24/7 Support", desc: "Always available" }
-            ].map((item, idx) => (
+            {(homeContent?.trustSection?.items || [
+              { icon: "shield", title: "100% Secure", description: "End-to-end encryption" },
+              { icon: "lock", title: "Private", description: "Confidential sessions" },
+              { icon: "check-circle", title: "Verified", description: "Certified psychics" },
+              { icon: "clock", title: "24/7 Support", description: "Always available" }
+            ]).map((item, idx) => (
               <div key={idx} className="text-center p-4">
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-full mb-3" 
                   style={{ backgroundColor: colors.deepPurple + "20", color: colors.deepPurple }}>
-                  {item.icon}
+                  {item.icon === 'shield' && <Shield />}
+                  {item.icon === 'lock' && <Lock />}
+                  {item.icon === 'check-circle' && <CheckCircle />}
+                  {item.icon === 'clock' && <Clock />}
                 </div>
                 <h4 className="font-bold text-lg mb-1" style={{ color: colors.deepPurple }}>{item.title}</h4>
-                <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{item.desc}</p>
+                <p className="text-sm" style={{ color: colors.deepPurple + "CC" }}>{item.description}</p>
               </div>
             ))}
           </div>
@@ -755,13 +820,15 @@ const Home = () => {
           <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-full" 
             style={{ backgroundColor: colors.antiqueGold + "20", color: colors.antiqueGold }}>
             <Award className="h-4 w-4" />
-            <span className="text-sm font-medium">Our Human Psychics</span>
+            <span className="text-sm font-medium">
+              {homeContent?.featuredSection?.badge || "Our Human Psychics"}
+            </span>
           </div>
           <h2 className="text-4xl font-bold mb-4" style={{ color: colors.deepPurple }}>
-            Meet Our Top-Rated Psychics
+            {homeContent?.featuredSection?.title || "Meet Our Top-Rated Psychics"}
           </h2>
           <p className="text-lg max-w-2xl mx-auto" style={{ color: colors.deepPurple + "CC" }}>
-            Carefully selected for their exceptional accuracy, empathy, and client satisfaction
+            {homeContent?.featuredSection?.description || "Carefully selected for their exceptional accuracy, empathy, and client satisfaction"}
           </p>
         </div>
 
@@ -1111,18 +1178,20 @@ const Home = () => {
             <div className="inline-flex items-center gap-2 mb-4 px-4 py-2 rounded-full" 
               style={{ backgroundColor: colors.antiqueGold + "20", color: colors.antiqueGold }}>
               <Sparkles className="h-4 w-4" />
-              <span className="text-sm font-medium">Why HecateVoyance Stands Out</span>
+              <span className="text-sm font-medium">
+                {homeContent?.featuresSection?.badge || "Why HecateVoyance Stands Out"}
+              </span>
             </div>
             <h2 className="text-4xl font-bold mb-6" style={{ color: colors.softIvory }}>
-              The Ultimate Spiritual Guidance Platform
+              {homeContent?.featuresSection?.title || "The Ultimate Spiritual Guidance Platform"}
             </h2>
             <p className="text-lg max-w-3xl mx-auto" style={{ color: colors.softIvory + "CC" }}>
-              We combine ancient wisdom with modern technology to provide authentic, transformative experiences
+              {homeContent?.featuresSection?.description || "We combine ancient wisdom with modern technology to provide authentic, transformative experiences"}
             </p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {[
+            {(homeContent?.featuresSection?.features || [
               {
                 icon: "🎯",
                 title: "Precision Matching",
@@ -1159,7 +1228,7 @@ const Home = () => {
                 description: "Tools and resources to track your spiritual development and reading history.",
                 features: ["Session records", "Progress insights", "Personalized recommendations"]
               }
-            ].map((feature, index) => (
+            ]).map((feature, index) => (
               <motion.div
                 key={index}
                 initial={{ opacity: 0, y: 20 }}
@@ -1211,10 +1280,10 @@ const Home = () => {
             <div className="absolute top-0 left-0 w-full h-1" style={{ backgroundColor: colors.antiqueGold }}></div>
             
             <h2 className="text-3xl md:text-4xl font-bold mb-6" style={{ color: colors.softIvory }}>
-              Ready to Begin Your Spiritual Journey?
+              {homeContent?.ctaSection?.title || "Ready to Begin Your Spiritual Journey?"}
             </h2>
             <p className="text-lg mb-8 max-w-2xl mx-auto" style={{ color: colors.softIvory + "CC" }}>
-              Join thousands who have found clarity, direction, and peace through authentic psychic connections
+              {homeContent?.ctaSection?.description || "Join thousands who have found clarity, direction, and peace through authentic psychic connections"}
             </p>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -1237,12 +1306,12 @@ const Home = () => {
                   }
                 }}
               >
-                Start Chatting Now
+                {homeContent?.ctaSection?.button?.text || "Start Chatting Now"}
               </Button>
             </div>
             
             <p className="text-sm mt-8" style={{ color: colors.softIvory + "80" }}>
-              No credit card required for trial · Cancel anytime · 100% satisfaction guarantee
+              {homeContent?.ctaSection?.footer || "No credit card required for trial · Cancel anytime · 100% satisfaction guarantee"}
             </p>
           </motion.div>
         </div>

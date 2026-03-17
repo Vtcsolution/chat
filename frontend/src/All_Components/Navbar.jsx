@@ -403,6 +403,13 @@ export default function Navbar({ onOpenPaymentModal }) {
             </Link>
           </motion.li>
           <motion.li variants={menuItemVariants}>
+            <Link onClick={handleMenu} to="/blogs" className="block py-2">
+              <span className="text-lg font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
+                Blogs
+              </span>
+            </Link>
+          </motion.li>
+          <motion.li variants={menuItemVariants}>
             <Link onClick={handleMenu} to="/contact" className="block py-2">
               <span className="text-lg font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
                 Contact
@@ -522,7 +529,7 @@ export default function Navbar({ onOpenPaymentModal }) {
                         borderColor: colors.antiqueGold
                       }}
                     >
-                      <Star className="w-4 h-4 mr-2" />
+                      <Star className="w-4 w-4 mr-2" />
                       Psychic Sign In
                     </Button>
                   </Link>
@@ -536,7 +543,7 @@ export default function Navbar({ onOpenPaymentModal }) {
                         borderColor: colors.antiqueGold
                       }}
                     >
-                      <Star className="w-4 h-4 mr-2" />
+                      <Star className="w-4 w-4 mr-2" />
                       Psychic Sign Up
                     </Button>
                   </Link>
@@ -547,31 +554,34 @@ export default function Navbar({ onOpenPaymentModal }) {
         </motion.ul>
       </div>
      
-      {/* Main Header */}
-      <header className="overflow-hidden border-b top-0 z-[100] shadow-sm relative" style={{ backgroundColor: colors.softIvory }}>
+      {/* Main Header - Now sticky */}
+      <header 
+        className="sticky top-0 overflow-hidden border-b z-[100] shadow-sm"
+        style={{ backgroundColor: colors.softIvory }}
+      >
         <div className="container mx-auto px-4 py-3 max-w-7xl">
-          <div className="flex justify-between items-center">
+          <div className="flex items-center justify-between">
             {/* Left: Company Name */}
-            <div className="flex items-center min-w-0 flex-1">
-              <Link to="/" className="min-w-0">
+            <div className="flex-shrink-0">
+              <Link to="/">
                 <motion.div
-                  className="flex flex-col items-start min-w-0"
+                  className="flex flex-col"
                   initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.5 }}
                 >
-                  <span className="text-2xl font-serif font-bold tracking-tight truncate" style={{ color: colors.deepPurple }}>
+                  <span className="text-2xl font-serif font-bold tracking-tight whitespace-nowrap" style={{ color: colors.deepPurple }}>
                     HecateVoyance
                   </span>
-                  <span className="text-xs font-medium tracking-wider truncate" style={{ color: colors.antiqueGold }}>
+                  <span className="text-xs font-medium tracking-wider whitespace-nowrap" style={{ color: colors.antiqueGold }}>
                     SPIRITUAL GUIDANCE
                   </span>
                 </motion.div>
               </Link>
             </div>
             
-            {/* Center: Navigation Links (Desktop only) */}
-            <div className="hidden lg:flex items-center justify-center flex-1">
+            {/* Center: Navigation Links (Desktop only) - Now with proper spacing */}
+            <div className="hidden lg:flex items-center justify-center flex-1 mx-4">
               <motion.ul
                 className="flex items-center gap-6"
                 initial="hidden"
@@ -580,36 +590,43 @@ export default function Navbar({ onOpenPaymentModal }) {
               >
                 <motion.li variants={menuItemVariants}>
                   <Link to="/">
-                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
+                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer whitespace-nowrap" style={{ color: colors.deepPurple }}>
                       Home
                     </span>
                   </Link>
                 </motion.li>
                 <motion.li variants={menuItemVariants}>
                   <Link to="/about">
-                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
+                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer whitespace-nowrap" style={{ color: colors.deepPurple }}>
                       About
                     </span>
                   </Link>
                 </motion.li>
                 <motion.li variants={menuItemVariants}>
                   <Link to="/psychics">
-                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
+                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer whitespace-nowrap" style={{ color: colors.deepPurple }}>
                       Psychics
                     </span>
                   </Link>
                 </motion.li>
                 <motion.li variants={menuItemVariants}>
+                  <Link to="/blogs">
+                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer whitespace-nowrap" style={{ color: colors.deepPurple }}>
+                      Blogs
+                    </span>
+                  </Link>
+                </motion.li>
+                <motion.li variants={menuItemVariants}>
                   <Link to="/contact">
-                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
+                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer whitespace-nowrap" style={{ color: colors.deepPurple }}>
                       Contact
                     </span>
                   </Link>
                 </motion.li>
                 <motion.li variants={menuItemVariants}>
                   <Link to="/terms-&-conditions">
-                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer" style={{ color: colors.deepPurple }}>
-                      Terms & Conditions
+                    <span className="text-base font-medium hover:opacity-80 transition-opacity cursor-pointer whitespace-nowrap" style={{ color: colors.deepPurple }}>
+                      Terms
                     </span>
                   </Link>
                 </motion.li>
@@ -617,15 +634,15 @@ export default function Navbar({ onOpenPaymentModal }) {
             </div>
            
             {/* Right: Auth Dropdown, Wallet & Mobile Menu */}
-            <div className="flex items-center gap-4 min-w-0 justify-end flex-1">
+            <div className="flex items-center gap-3 flex-shrink-0">
               {/* Desktop Auth Dropdown */}
-              <div className="hidden lg:flex items-center gap-4">
+              <div className="hidden lg:flex items-center gap-3">
                 {user && (
                   <>
                     <motion.div variants={menuItemVariants}>
                       <Link
                         to="/dashboard"
-                        className="inline-block text-base font-medium px-4 py-2 rounded-md transition-all duration-200 border"
+                        className="inline-block text-sm font-medium px-3 py-2 rounded-md transition-all duration-200 border whitespace-nowrap"
                         style={{
                           backgroundColor: colors.softIvory,
                           color: colors.deepPurple,
@@ -639,7 +656,7 @@ export default function Navbar({ onOpenPaymentModal }) {
                     <motion.div variants={menuItemVariants}>
                       <button
                         onClick={handleLogout}
-                        className="inline-block text-base font-medium px-4 py-2 rounded-md transition-all duration-200 border"
+                        className="inline-block text-sm font-medium px-3 py-2 rounded-md transition-all duration-200 border whitespace-nowrap"
                         style={{
                           backgroundColor: colors.softIvory,
                           color: '#dc2626',
@@ -658,7 +675,8 @@ export default function Navbar({ onOpenPaymentModal }) {
                       <DropdownMenuTrigger asChild>
                         <Button
                           variant="outline"
-                          className="text-sm px-4 py-2 transition-all duration-200 border flex items-center gap-2"
+                          size="sm"
+                          className="text-sm px-3 py-2 transition-all duration-200 border flex items-center gap-2 whitespace-nowrap"
                           style={{
                             backgroundColor: colors.softIvory,
                             color: colors.deepPurple,
@@ -666,7 +684,7 @@ export default function Navbar({ onOpenPaymentModal }) {
                           }}
                         >
                           <User className="w-4 h-4" />
-                          <span>Sign In / Register</span>
+                          <span>Sign In</span>
                           <ChevronDown className="w-4 h-4" />
                         </Button>
                       </DropdownMenuTrigger>
@@ -734,11 +752,11 @@ export default function Navbar({ onOpenPaymentModal }) {
              
               {/* Wallet Button (only for logged-in users) */}
               {user && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center">
                   <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
                     <DialogTrigger asChild>
                       <motion.div
-                        className="inline-block text-sm font-medium px-4 py-2 rounded-lg transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-lg"
+                        className="inline-block text-sm font-medium px-3 py-2 rounded-lg transition-all duration-300 flex items-center gap-2 cursor-pointer shadow-lg whitespace-nowrap"
                         style={{
                           background: `linear-gradient(135deg, ${colors.deepPurple}, ${colors.darkPurple})`,
                           color: colors.softIvory
@@ -747,10 +765,10 @@ export default function Navbar({ onOpenPaymentModal }) {
                         whileTap={{ scale: 0.95 }}
                         onClick={openPaymentModal}
                       >
-                        <Wallet className="h-5 w-5" />
+                        <Wallet className="h-4 w-4" />
                         {authLoading || isLoadingBalance ? (
                           <div className="flex items-center gap-2">
-                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <Loader2 className="h-3 w-3 animate-spin" />
                             <span>Loading...</span>
                           </div>
                         ) : (
@@ -1118,7 +1136,7 @@ export default function Navbar({ onOpenPaymentModal }) {
               
               {/* Mobile Menu Button */}
               <button
-                className="lg:hidden text-gray-600 hover:text-gray-900 focus:outline-none"
+                className="lg:hidden text-gray-600 hover:text-gray-900 focus:outline-none flex-shrink-0"
                 onClick={handleMenu}
                 aria-label="Toggle menu"
               >

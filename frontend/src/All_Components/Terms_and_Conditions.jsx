@@ -1,426 +1,407 @@
-import { ScrollText, Users, CreditCard, RotateCcw, AlertTriangle, Shield, Copyright, ChevronRight } from "lucide-react"
+import { ScrollText, Users, CreditCard, RotateCcw, AlertTriangle, Shield, Copyright, ChevronRight, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { useState, useEffect } from "react"
 
 export default function TermsAndConditions() {
-  const colors = {
-    deepPurple: "#2B1B3F",
-    antiqueGold: "#C9A24D",
-    softIvory: "#F5F3EB",
-    lightGold: "#E8D9B0",
-    darkPurple: "#1A1129",
+  const [termsData, setTermsData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchTermsData();
+  }, []);
+
+  const fetchTermsData = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_BASE_URL}/api/terms`);
+      const data = await response.json();
+      if (data.success) {
+        setTermsData(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching terms data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Get icon component based on icon name
+  const getIcon = (iconName, className = "h-6 w-6") => {
+    const icons = {
+      'scroll-text': <ScrollText className={className} />,
+      'users': <Users className={className} />,
+      'credit-card': <CreditCard className={className} />,
+      'rotate-ccw': <RotateCcw className={className} />,
+      'alert-triangle': <AlertTriangle className={className} />,
+      'shield': <Shield className={className} />,
+      'copyright': <Copyright className={className} />
+    };
+    return icons[iconName] || <ScrollText className={className} />;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#F5F3EB" }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#C9A24D" }} />
+      </div>
+    );
   }
+
+  if (!termsData) return null;
+
+  const colors = termsData.colors;
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.softIvory }}>
-      {/* Hero Section */}
-      <div 
-        className="relative py-16 px-4 overflow-hidden"
-        style={{ 
-          backgroundColor: colors.deepPurple,
-          background: `linear-gradient(135deg, ${colors.darkPurple} 0%, ${colors.deepPurple} 100%)`
-        }}
-      >
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full" 
-            style={{ background: `radial-gradient(circle, ${colors.antiqueGold} 0%, transparent 70%)` }}></div>
-        </div>
-        
-        <div className="relative max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6"
-            style={{ backgroundColor: colors.antiqueGold + "20", color: colors.antiqueGold }}>
-            <ScrollText className="h-10 w-10" />
+      {/* Hero Section - Exactly like Contact page */}
+      <div className="relative overflow-hidden" style={{ backgroundColor: colors.deepPurple }}>
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 to-transparent"></div>
+        <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8 relative">
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-20 h-20 rounded-full mb-6"
+              style={{ backgroundColor: colors.antiqueGold + "20", color: colors.antiqueGold }}>
+              {getIcon(termsData.hero.icon, "h-10 w-10")}
+            </div>
+            <h1 className="text-4xl md:text-5xl font-serif font-bold text-white mb-4 tracking-tight">
+              {termsData.hero.title}
+            </h1>
+            <p className="text-xl text-white/80 max-w-3xl mx-auto">
+              {termsData.hero.subtitle}
+            </p>
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4" style={{ color: colors.softIvory }}>
-            Terms & Conditions
-          </h1>
-          <p className="text-lg md:text-xl opacity-90" style={{ color: colors.softIvory }}>
-            HecateVoyance - Clear, Transparent, and Professional
-          </p>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4 py-12">
-        {/* Quick Navigation */}
-        <div className="mb-12">
-          <div className="flex flex-wrap gap-2 justify-center">
-            {[
-              { label: "User Responsibilities", id: "responsibilities" },
-              { label: "Payment Terms", id: "payment" },
-              { label: "Refund Policy", id: "refund" },
-              { label: "Disclaimer", id: "disclaimer" },
-              { label: "Intellectual Property", id: "property" }
-            ].map((item) => (
-              <a 
-                key={item.id}
-                href={`#${item.id}`}
-                className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all hover:scale-105"
-                style={{ 
-                  backgroundColor: colors.antiqueGold + "15",
-                  color: colors.deepPurple,
-                  border: `1px solid ${colors.antiqueGold}30`
-                }}
-              >
-                {item.label}
-                <ChevronRight className="ml-1 h-3 w-3" />
-              </a>
-            ))}
+      {/* Main Content - Exactly like Contact page structure */}
+      <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        <div className="grid lg:grid-cols-1 gap-8">
+          {/* Quick Navigation - Centered */}
+          <div className="mb-12">
+            <div className="flex flex-wrap gap-2 justify-center">
+              {termsData.quickNav.map((item) => (
+                <a 
+                  key={item.id}
+                  href={`#${item.id}`}
+                  className="inline-flex items-center px-4 py-2 rounded-full text-sm font-medium transition-all hover:scale-105"
+                  style={{ 
+                    backgroundColor: colors.antiqueGold + "15",
+                    color: colors.deepPurple,
+                    border: `1px solid ${colors.antiqueGold}30`
+                  }}
+                >
+                  {item.label}
+                  <ChevronRight className="ml-1 h-3 w-3" />
+                </a>
+              ))}
+            </div>
           </div>
-        </div>
 
-        {/* Terms Content */}
-        <div className="space-y-8">
-          {/* Section 1: User Responsibilities */}
-          <section id="responsibilities" className="scroll-mt-20">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden border"
-              style={{ borderColor: colors.antiqueGold + "30" }}>
-              <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
-                <div className="flex items-center p-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
-                    style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
-                    <Users className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>User Responsibilities</h2>
-                    <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
-                      Your commitment to ethical use
-                    </p>
+          {/* Terms Content - Full width like Contact page */}
+          <div className="space-y-8">
+            {/* Section 1: User Responsibilities */}
+            <section id={termsData.quickNav[0]?.id || "responsibilities"} className="scroll-mt-20">
+              <div className="bg-white rounded-2xl shadow-xl overflow-hidden border"
+                style={{ borderColor: colors.antiqueGold + "30", boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
+                <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
+                  <div className="flex items-center p-4">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
+                      style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
+                      <Users className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                        {termsData.userResponsibilities.title}
+                      </h2>
+                      <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
+                        {termsData.userResponsibilities.subtitle}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-              
-              <div className="p-8">
-                <p className="text-gray-700 mb-6">
-                  By using HecateVoyance services, you agree to the following responsibilities:
-                </p>
-                <ul className="space-y-4">
-                  {[
-                    "Providing accurate and truthful information for personal spiritual analysis.",
-                    "Respecting our psychics and adhering to community guidelines at all times.",
-                    "Avoiding service misuse for unethical or illegal purposes.",
-                    "Maintaining the confidentiality of your account credentials.",
-                    "Using our services responsibly and in accordance with all applicable laws."
-                  ].map((item, index) => (
-                    <li key={index} className="flex items-start">
-                      <div className="flex-shrink-0 mt-1 mr-3">
-                        <div className="w-6 h-6 rounded-full flex items-center justify-center"
-                          style={{ backgroundColor: colors.antiqueGold, color: colors.deepPurple }}>
-                          {index + 1}
+                
+                <div className="p-8">
+                  <p className="text-gray-700 mb-6">
+                    {termsData.userResponsibilities.description}
+                  </p>
+                  <ul className="space-y-4">
+                    {termsData.userResponsibilities.items.map((item, index) => (
+                      <li key={index} className="flex items-start">
+                        <div className="flex-shrink-0 mt-1 mr-3">
+                          <div className="w-6 h-6 rounded-full flex items-center justify-center"
+                            style={{ backgroundColor: colors.antiqueGold, color: colors.deepPurple }}>
+                            {index + 1}
+                          </div>
                         </div>
-                      </div>
-                      <span className="text-gray-700">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="mt-8 p-4 rounded-lg" 
-                  style={{ backgroundColor: colors.antiqueGold + "10", borderLeft: `4px solid ${colors.antiqueGold}` }}>
-                  <p className="font-medium" style={{ color: colors.deepPurple }}>
-                    You are solely responsible for any insights or decisions made based on psychic guidance received through our platform.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 2: Payment Terms */}
-          <section id="payment" className="scroll-mt-20">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden border"
-              style={{ borderColor: colors.antiqueGold + "30" }}>
-              <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
-                <div className="flex items-center p-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
-                    style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
-                    <CreditCard className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>Payment Terms</h2>
-                    <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
-                      Transparent pricing and billing
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-8">
-                <div className="space-y-4 text-gray-700">
-                  <p>HecateVoyance operates on a credit-based system and/or subscription model.</p>
-                  
-                  <div className="grid md:grid-cols-2 gap-6 my-6">
-                    <div className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
-                      <h3 className="font-bold mb-2 text-lg" style={{ color: colors.deepPurple }}>Credit System</h3>
-                      <p>Purchase credits for specific consultations (e.g., <span className="font-semibold">$3.99/min for chat sessions</span>).</p>
-                    </div>
-                    <div className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
-                      <h3 className="font-bold mb-2 text-lg" style={{ color: colors.deepPurple }}>Subscription Plans</h3>
-                      <p>Monthly packages for premium features and discounted rates.</p>
-                    </div>
-                  </div>
-                  
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="font-medium mb-2">Important Notes:</p>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
-                        All prices are clearly displayed before payment confirmation
+                        <span className="text-gray-700">{item}</span>
                       </li>
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
-                        Rates may vary based on psychic expertise and service type
-                      </li>
-                      <li className="flex items-start">
-                        <ChevronRight className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
-                        You will be notified of any price changes 30 days in advance
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 3: Refund Policy */}
-          <section id="refund" className="scroll-mt-20">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden border"
-              style={{ borderColor: colors.antiqueGold + "30" }}>
-              <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
-                <div className="flex items-center p-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
-                    style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
-                    <RotateCcw className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>Refund Policy</h2>
-                    <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
-                      Our commitment to fair service
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-8">
-                <div className="space-y-6 text-gray-700">
-                  <p>Due to the digital and immediate nature of our services:</p>
-                  
-                  <div className="p-4 rounded-lg" style={{ backgroundColor: "#FEF2F2", borderLeft: `4px solid #DC2626` }}>
-                    <p className="font-semibold text-red-700">
-                      All sales are final. No refunds will be issued for completed psychic sessions.
-                    </p>
-                  </div>
-                  
-                  <div className="p-4 rounded-lg" style={{ backgroundColor: "#F0F9FF", borderLeft: `4px solid #0EA5E9` }}>
-                    <p className="font-medium text-gray-700 mb-2">Technical Issue Resolution:</p>
-                    <p>If you experience technical problems (e.g., system errors, not receiving your consultation), contact our support team within 24 hours for assessment and possible compensation.</p>
-                    <p className="text-sm mt-2">Support response time: 1-2 business days</p>
-                  </div>
-                  
-                  <div className="bg-gray-50 p-4 rounded-lg">
-                    <p className="font-medium mb-2">Refund Exceptions:</p>
-                    <ul className="space-y-2 text-sm">
-                      <li className="flex items-start">
-                        <div className="w-2 h-2 rounded-full bg-red-500 mt-2 mr-3 flex-shrink-0"></div>
-                        No refunds for subjective dissatisfaction with reading outcomes
-                      </li>
-                      <li className="flex items-start">
-                        <div className="w-2 h-2 rounded-full bg-green-500 mt-2 mr-3 flex-shrink-0"></div>
-                        Refunds may be considered for verified technical failures preventing service delivery
-                      </li>
-                      <li className="flex items-start">
-                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 mr-3 flex-shrink-0"></div>
-                        Unused subscription portions may be eligible for pro-rated refunds (case-by-case basis)
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 4: Disclaimer */}
-          <section id="disclaimer" className="scroll-mt-20">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden border"
-              style={{ borderColor: colors.antiqueGold + "30" }}>
-              <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
-                <div className="flex items-center p-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
-                    style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
-                    <AlertTriangle className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>Important Disclaimer</h2>
-                    <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
-                      Understanding the nature of our services
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-8">
-                <div className="space-y-4 text-gray-700">
-                  <div className="p-4 rounded-lg" style={{ backgroundColor: "#FEF3C7", border: `2px solid ${colors.antiqueGold}` }}>
-                    <p className="font-bold text-lg text-center mb-2" style={{ color: colors.deepPurple }}>
-                      ⚠️ CRITICAL INFORMATION
-                    </p>
-                    <p className="text-center">
-                      Psychic insights provided on HecateVoyance are for spiritual guidance and entertainment purposes only.
-                    </p>
-                  </div>
-                  
-                  <div className="space-y-4">
-                    <div className="flex items-start p-3 rounded-lg" style={{ backgroundColor: colors.softIvory }}>
-                      <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
-                      <div>
-                        <p className="font-semibold mb-1">Not Professional Advice</p>
-                        <p className="text-sm">
-                          Our services are <span className="font-bold">NOT</span> a substitute for professional legal, medical, psychological, or financial advice.
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start p-3 rounded-lg" style={{ backgroundColor: colors.softIvory }}>
-                      <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
-                      <div>
-                        <p className="font-semibold mb-1">Personal Judgment Required</p>
-                        <p className="text-sm">
-                          Users must exercise their own judgment when interpreting readings and making life decisions.
-                        </p>
-                      </div>
-                    </div>
-                    
-                    <div className="flex items-start p-3 rounded-lg" style={{ backgroundColor: colors.softIvory }}>
-                      <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
-                      <div>
-                        <p className="font-semibold mb-1">For Entertainment Purposes</p>
-                        <p className="text-sm">
-                          The platform is intended for entertainment and spiritual exploration purposes.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="mt-6 p-4 rounded-lg border" style={{ borderColor: "#DC2626" }}>
-                    <p className="text-red-600 text-center font-medium">
-                      HecateVoyance and its psychics are not liable for any decisions, actions, or outcomes resulting from guidance received through our platform.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </section>
-
-          {/* Section 5: Intellectual Property */}
-          <section id="property" className="scroll-mt-20">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden border"
-              style={{ borderColor: colors.antiqueGold + "30" }}>
-              <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
-                <div className="flex items-center p-4">
-                  <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
-                    style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
-                    <Copyright className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>Intellectual Property</h2>
-                    <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
-                      Protecting our content and your rights
-                    </p>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-8">
-                <div className="space-y-4 text-gray-700">
-                  <p>
-                    All content on the platform, including but not limited to UI designs, logos, psychic profiles, reading methodologies, and generated insights are protected intellectual property of HecateVoyance.
-                  </p>
-                  
-                  <div className="grid md:grid-cols-2 gap-6 my-6">
-                    <div className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
-                      <h3 className="font-bold mb-2" style={{ color: colors.deepPurple }}>What We Protect</h3>
-                      <ul className="space-y-2 text-sm">
-                        <li className="flex items-start">
-                          <Shield className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" style={{ color: colors.antiqueGold }} />
-                          Platform design and interface
-                        </li>
-                        <li className="flex items-start">
-                          <Shield className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" style={{ color: colors.antiqueGold }} />
-                          Psychic profiles and branding
-                        </li>
-                        <li className="flex items-start">
-                          <Shield className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" style={{ color: colors.antiqueGold }} />
-                          Reading methodologies and systems
-                        </li>
-                        <li className="flex items-start">
-                          <Shield className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" style={{ color: colors.antiqueGold }} />
-                          Generated content and insights
-                        </li>
-                      </ul>
-                    </div>
-                    
-                    <div className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
-                      <h3 className="font-bold mb-2" style={{ color: colors.deepPurple }}>Restricted Activities</h3>
-                      <ul className="space-y-2 text-sm">
-                        <li className="flex items-start">
-                          <div className="w-2 h-2 rounded-full bg-red-500 mt-2 mr-3 flex-shrink-0"></div>
-                          Reproducing or copying platform content
-                        </li>
-                        <li className="flex items-start">
-                          <div className="w-2 h-2 rounded-full bg-red-500 mt-2 mr-3 flex-shrink-0"></div>
-                          Modifying or creating derivative works
-                        </li>
-                        <li className="flex items-start">
-                          <div className="w-2 h-2 rounded-full bg-red-500 mt-2 mr-3 flex-shrink-0"></div>
-                          Distributing or commercializing our content
-                        </li>
-                        <li className="flex items-start">
-                          <div className="w-2 h-2 rounded-full bg-red-500 mt-2 mr-3 flex-shrink-0"></div>
-                          Using our branding without permission
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                  
-                  <div className="p-4 rounded-lg" style={{ backgroundColor: colors.antiqueGold + "10" }}>
+                    ))}
+                  </ul>
+                  <div className="mt-8 p-4 rounded-lg" 
+                    style={{ backgroundColor: colors.antiqueGold + "10", borderLeft: `4px solid ${colors.antiqueGold}` }}>
                     <p className="font-medium" style={{ color: colors.deepPurple }}>
-                      Any unauthorized use of HecateVoyance intellectual property will result in immediate termination of service and may lead to legal action.
+                      {termsData.userResponsibilities.importantNote}
                     </p>
                   </div>
                 </div>
               </div>
-            </div>
-          </section>
-        </div>
+            </section>
 
-        {/* Acceptance Section */}
-        <div className="mt-12 text-center">
-          <div className="bg-white rounded-xl shadow-lg p-8 border" 
-            style={{ borderColor: colors.antiqueGold + "30" }}>
-            <h3 className="text-2xl font-bold mb-4" style={{ color: colors.deepPurple }}>
-              Agreement Acceptance
-            </h3>
-            <p className="text-gray-700 mb-6">
-              By using HecateVoyance services, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              <Button
-                onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="rounded-full px-8"
-                style={{ 
-                  backgroundColor: colors.antiqueGold,
-                  color: colors.deepPurple
-                }}
-              >
-                Back to Top
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => window.location.href = '/'}
-                className="rounded-full px-8"
-                style={{ 
-                  borderColor: colors.antiqueGold,
-                  color: colors.deepPurple
-                }}
-              >
-                Return Home
-              </Button>
+            {/* Section 2: Payment Terms */}
+            <section id={termsData.quickNav[1]?.id || "payment"} className="scroll-mt-20">
+              <div className="bg-white rounded-2xl shadow-xl overflow-hidden border"
+                style={{ borderColor: colors.antiqueGold + "30", boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
+                <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
+                  <div className="flex items-center p-4">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
+                      style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
+                      <CreditCard className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                        {termsData.paymentTerms.title}
+                      </h2>
+                      <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
+                        {termsData.paymentTerms.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-8">
+                  <div className="space-y-4 text-gray-700">
+                    <p>{termsData.paymentTerms.description}</p>
+                    
+                    <div className="grid md:grid-cols-2 gap-6 my-6">
+                      {termsData.paymentTerms.systems.map((system, index) => (
+                        <div key={index} className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
+                          <h3 className="font-bold mb-2 text-lg" style={{ color: colors.deepPurple }}>{system.title}</h3>
+                          <p dangerouslySetInnerHTML={{ __html: system.description }} />
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="font-medium mb-2">Important Notes:</p>
+                      <ul className="space-y-2 text-sm">
+                        {termsData.paymentTerms.importantNotes.map((note, index) => (
+                          <li key={index} className="flex items-start">
+                            <ChevronRight className="h-4 w-4 mr-2 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
+                            {note}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Section 3: Refund Policy */}
+            <section id={termsData.quickNav[2]?.id || "refund"} className="scroll-mt-20">
+              <div className="bg-white rounded-2xl shadow-xl overflow-hidden border"
+                style={{ borderColor: colors.antiqueGold + "30", boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
+                <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
+                  <div className="flex items-center p-4">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
+                      style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
+                      <RotateCcw className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                        {termsData.refundPolicy.title}
+                      </h2>
+                      <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
+                        {termsData.refundPolicy.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-8">
+                  <div className="space-y-6 text-gray-700">
+                    <p>{termsData.refundPolicy.description}</p>
+                    
+                    <div className="p-4 rounded-lg" style={{ backgroundColor: "#FEF2F2", borderLeft: `4px solid #DC2626` }}>
+                      <p className="font-semibold text-red-700">
+                        {termsData.refundPolicy.finalSaleNote}
+                      </p>
+                    </div>
+                    
+                    <div className="p-4 rounded-lg" style={{ backgroundColor: "#F0F9FF", borderLeft: `4px solid #0EA5E9` }}>
+                      <p className="font-medium text-gray-700 mb-2">{termsData.refundPolicy.technicalIssue.title}</p>
+                      <p>{termsData.refundPolicy.technicalIssue.description}</p>
+                      <p className="text-sm mt-2">{termsData.refundPolicy.technicalIssue.responseTime}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 p-4 rounded-lg">
+                      <p className="font-medium mb-2">Refund Exceptions:</p>
+                      <ul className="space-y-2 text-sm">
+                        {termsData.refundPolicy.exceptions.map((exception, index) => {
+                          const dotColor = 
+                            exception.type === 'no-refund' ? 'bg-red-500' : 
+                            exception.type === 'refund-eligible' ? 'bg-green-500' : 'bg-blue-500';
+                          return (
+                            <li key={index} className="flex items-start">
+                              <div className={`w-2 h-2 rounded-full ${dotColor} mt-2 mr-3 flex-shrink-0`}></div>
+                              {exception.text}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Section 4: Disclaimer */}
+            <section id={termsData.quickNav[3]?.id || "disclaimer"} className="scroll-mt-20">
+              <div className="bg-white rounded-2xl shadow-xl overflow-hidden border"
+                style={{ borderColor: colors.antiqueGold + "30", boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
+                <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
+                  <div className="flex items-center p-4">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
+                      style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
+                      <AlertTriangle className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                        {termsData.disclaimer.title}
+                      </h2>
+                      <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
+                        {termsData.disclaimer.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-8">
+                  <div className="space-y-4 text-gray-700">
+                    <div className="p-4 rounded-lg" style={{ backgroundColor: "#FEF3C7", border: `2px solid ${colors.antiqueGold}` }}>
+                      <p className="font-bold text-lg text-center mb-2" style={{ color: colors.deepPurple }}>
+                        {termsData.disclaimer.criticalWarning.title}
+                      </p>
+                      <p className="text-center">
+                        {termsData.disclaimer.criticalWarning.text}
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {termsData.disclaimer.points.map((point, index) => (
+                        <div key={index} className="flex items-start p-3 rounded-lg" style={{ backgroundColor: colors.softIvory }}>
+                          <AlertTriangle className="h-5 w-5 mr-3 flex-shrink-0 mt-0.5" style={{ color: colors.antiqueGold }} />
+                          <div>
+                            <p className="font-semibold mb-1">{point.title}</p>
+                            <p className="text-sm" dangerouslySetInnerHTML={{ __html: point.description }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    <div className="mt-6 p-4 rounded-lg border" style={{ borderColor: "#DC2626" }}>
+                      <p className="text-red-600 text-center font-medium">
+                        {termsData.disclaimer.liabilityNotice}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Section 5: Intellectual Property */}
+            <section id={termsData.quickNav[4]?.id || "property"} className="scroll-mt-20">
+              <div className="bg-white rounded-2xl shadow-xl overflow-hidden border"
+                style={{ borderColor: colors.antiqueGold + "30", boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
+                <div className="p-2" style={{ backgroundColor: colors.deepPurple + "05" }}>
+                  <div className="flex items-center p-4">
+                    <div className="flex items-center justify-center w-12 h-12 rounded-lg mr-4"
+                      style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
+                      <Copyright className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h2 className="text-2xl font-bold" style={{ color: colors.deepPurple }}>
+                        {termsData.intellectualProperty.title}
+                      </h2>
+                      <p className="text-sm opacity-75" style={{ color: colors.deepPurple }}>
+                        {termsData.intellectualProperty.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-8">
+                  <div className="space-y-4 text-gray-700">
+                    <p>
+                      {termsData.intellectualProperty.description}
+                    </p>
+                    
+                    <div className="grid md:grid-cols-2 gap-6 my-6">
+                      <div className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
+                        <h3 className="font-bold mb-2" style={{ color: colors.deepPurple }}>What We Protect</h3>
+                        <ul className="space-y-2 text-sm">
+                          {termsData.intellectualProperty.protected.map((item, index) => (
+                            <li key={index} className="flex items-start">
+                              <Shield className="h-3 w-3 mr-2 mt-0.5 flex-shrink-0" style={{ color: colors.antiqueGold }} />
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      
+                      <div className="p-4 rounded-lg border" style={{ borderColor: colors.antiqueGold + "30" }}>
+                        <h3 className="font-bold mb-2" style={{ color: colors.deepPurple }}>Restricted Activities</h3>
+                        <ul className="space-y-2 text-sm">
+                          {termsData.intellectualProperty.restricted.map((item, index) => (
+                            <li key={index} className="flex items-start">
+                              <div className="w-2 h-2 rounded-full bg-red-500 mt-2 mr-3 flex-shrink-0"></div>
+                              {item}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                    
+                    <div className="p-4 rounded-lg" style={{ backgroundColor: colors.antiqueGold + "10" }}>
+                      <p className="font-medium" style={{ color: colors.deepPurple }}>
+                        {termsData.intellectualProperty.warning}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* Acceptance Section */}
+            <div className="bg-white rounded-2xl shadow-xl p-8 border" 
+              style={{ borderColor: colors.antiqueGold + "30", boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
+              <h3 className="text-2xl font-bold mb-4 text-center" style={{ color: colors.deepPurple }}>
+                {termsData.acceptance.title}
+              </h3>
+              <p className="text-gray-700 mb-6 text-center">
+                {termsData.acceptance.description}
+              </p>
+              <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                <Button
+                  onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                  className="rounded-full px-8"
+                  style={{ 
+                    backgroundColor: colors.antiqueGold,
+                    color: colors.deepPurple
+                  }}
+                >
+                  {termsData.acceptance.backToTopText}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => window.location.href = '/'}
+                  className="rounded-full px-8"
+                  style={{ 
+                    borderColor: colors.antiqueGold,
+                    color: colors.deepPurple
+                  }}
+                >
+                  {termsData.acceptance.returnHomeText}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -428,20 +409,31 @@ export default function TermsAndConditions() {
         {/* Footer */}
         <div className="text-center mt-12 pt-8 border-t" style={{ borderColor: colors.antiqueGold + "30" }}>
           <div className="flex items-center justify-center mb-4">
-            <div className="w-8 h-8 rounded-full mr-3" 
+            <div className="w-8 h-8 rounded-full mr-3 flex items-center justify-center" 
               style={{ backgroundColor: colors.deepPurple, color: colors.softIvory }}>
-              <Copyright className="h-4 w-4 mx-auto mt-2" />
+              <Copyright className="h-4 w-4" />
             </div>
-            <h4 className="text-lg font-bold" style={{ color: colors.deepPurple }}>HecateVoyance</h4>
+            <h4 className="text-lg font-bold" style={{ color: colors.deepPurple }}>{termsData.footer.companyName}</h4>
           </div>
           <p className="text-gray-600 mb-2">Last updated: {new Date().toLocaleDateString('en-US', { 
             year: 'numeric', 
             month: 'long', 
             day: 'numeric' 
           })}</p>
-          <p className="text-gray-600">© {new Date().getFullYear()} HecateVoyance. All rights reserved.</p>
+          <p className="text-gray-600">© {new Date().getFullYear()} {termsData.footer.companyName}. {termsData.footer.copyrightText}</p>
         </div>
       </div>
+
+      {/* Custom CSS for animations */}
+      <style jsx>{`
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fadeIn {
+          animation: fadeIn 0.3s ease-out;
+        }
+      `}</style>
     </div>
-  )
+  );
 }

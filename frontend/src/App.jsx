@@ -93,6 +93,16 @@ import MyWallet from "./All_Components/Mywallet";
 import PsychicForgotPassword from "./Psychic_Dashboard/PsychicForgotPassword";
 import PsychicResetPassword from "./Psychic_Dashboard/PsychicResetPassword";
 import PsychicEarningsPayment from "./Admin_Dashboard/HumanChat/PsychicEarningsPayment";
+import BlogsList from "./Admin_Dashboard/HumanChat/BlogsList";
+import AddBlog from "./Admin_Dashboard/HumanChat/AddBlog";
+import EditBlog from "./Admin_Dashboard/HumanChat/EditBlog";
+import BlogsPage from "./All_Components/BlogsPage";
+import BlogDetail from "./All_Components/BlogDetail";
+import AdminComments from "./Admin_Dashboard/AdminComments";
+import AdminHome from "./Admin_Dashboard/Pages/AdminHome";
+import AdminAbout from "./Admin_Dashboard/Pages/AdminAbout";
+import AdminContact from "./Admin_Dashboard/Pages/AdminContact";
+import AdminTerms from "./Admin_Dashboard/Pages/AdminTerms";
 
 
 const App = () => {
@@ -310,6 +320,8 @@ const App = () => {
                 <Route path="/terms-&-conditions" element={<TermsAndConditions />} />
                 <Route path="/about" element={<AboutPage />} />
                 <Route path="/psychics" element={<Psychics />} />
+                <Route path="/blogs" element={<BlogsPage />} />
+                <Route path="/blog/:id" element={<BlogDetail />} /> 
                 <Route path="/contact" element={<ContactPage />} />
                 <Route path="/otp-verification" element={<InputOTPDemo />} />
                 <Route path="/register" element={<Signup />} />
@@ -372,6 +384,50 @@ const App = () => {
     <PsychicEarningsPayment />
   </AdminProtectedRoute>
 } />
+
+ <Route path="/admin/dashboard/blogs" element={
+  <AdminProtectedRoute>
+    <BlogsList />
+  </AdminProtectedRoute>
+} />
+<Route path="/admin/dashboard/blogs/add" element={
+  <AdminProtectedRoute>
+    <AddBlog />
+  </AdminProtectedRoute>
+} />
+
+<Route path="/admin/dashboard/blogs/edit/:id" element={
+        <AdminProtectedRoute>
+          <EditBlog />
+        </AdminProtectedRoute>
+      } />
+<Route path="/admin/dashboard/comments" element={
+        <AdminProtectedRoute>
+          <AdminComments />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/dashboard/pages/home" element={
+        <AdminProtectedRoute>
+          <AdminHome />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/dashboard/pages/about" element={
+        <AdminProtectedRoute>
+          <AdminAbout />
+        </AdminProtectedRoute>
+      } />
+
+<Route path="/admin/dashboard/pages/contact" element={
+        <AdminProtectedRoute>
+          <AdminContact />
+        </AdminProtectedRoute>
+      } />
+      <Route path="/admin/dashboard/pages/terms" element={
+        <AdminProtectedRoute>
+          <AdminTerms />
+        </AdminProtectedRoute>
+      } />
+
                 <Route path="/admin/dashboard/alladvisors" element={
                   <AdminProtectedRoute><AllAdvisors /></AdminProtectedRoute>
                 } />

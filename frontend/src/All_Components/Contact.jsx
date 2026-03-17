@@ -18,24 +18,49 @@ import {
   Send,
   User,
   MailCheck,
-  AlertCircle
+  AlertCircle,
+  Loader2
 } from "lucide-react";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
 const ContactPage = () => {
+  const [contactData, setContactData] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     subject: "",
     message: ""
   });
-  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetchContactData();
+  }, []);
+
+  const fetchContactData = async () => {
+    try {
+      const response = await fetch(`${import.meta.env.VITE_BASE_URL}/api/contact`);
+      const data = await response.json();
+      
+      if (data.success) {
+        setContactData(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching contact data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
+    setSubmitting(true);
     setError(null);
     setSuccess(null);
+    
     try {
       const res = await fetch(
         `${import.meta.env.VITE_BASE_URL}/api/messages/contact`,
@@ -45,128 +70,60 @@ const ContactPage = () => {
           body: JSON.stringify(formData),
         }
       );
+      
       const data = await res.json();
+      
       if (!res.ok) {
         throw new Error(data.error || "Something went wrong.");
       }
-      setSuccess("Thank you for your message! We'll get back to you as soon as possible.");
+      
+      setSuccess(contactData?.contactForm?.successMessage || "Thank you for your message! We'll get back to you as soon as possible.");
       setFormData({ name: "", email: "", subject: "", message: "" });
     } catch (err) {
       setError(err.message);
     } finally {
-      setLoading(false);
+      setSubmitting(false);
     }
   };
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
-  // Color scheme
-  const colors = {
-    deepPurple: "#2B1B3F",
-    antiqueGold: "#C9A24D",
-    softIvory: "#F5F3EB",
-    lightGold: "#E8D9B0",
-    darkPurple: "#1A1129",
+
+  // Icon mapping function
+  const getIcon = (iconName, className = "h-6 w-6") => {
+    const icons = {
+      mail: <Mail className={className} />,
+      'message-square': <MessageSquare className={className} />,
+      phone: <Phone className={className} />,
+      'map-pin': <MapPin className={className} />,
+      shield: <Shield className={className} />,
+      clock: <Clock className={className} />,
+      star: <Star className={className} />,
+      'check-circle': <CheckCircle className={className} />,
+      users: <Users className={className} />,
+      facebook: <Facebook className={className} />,
+      instagram: <Instagram className={className} />,
+      twitter: <Twitter className={className} />,
+      linkedin: <Linkedin className={className} />,
+      globe: <Globe className={className} />
+    };
+    return icons[iconName] || <Mail className={className} />;
   };
-  // Static contact data
-  const contactPoints = [
-    {
-      icon: <Mail className="h-6 w-6" />,
-      title: "General Inquiries",
-      details: "info@spiritueelchatten.com",
-      link: "mailto:info@spiritueelchatten.com",
-      description: "For general questions and support"
-    },
-    {
-      icon: <MessageSquare className="h-6 w-6" />,
-      title: "VIP Client Support",
-      details: "vip@spiritueelchatten.com",
-      link: "mailto:vip@spiritueelchatten.com",
-      description: "Dedicated support for premium members"
-    },
-    {
-      icon: <Phone className="h-6 w-6" />,
-      title: "Phone Support",
-      details: "+1 (555) 123-4567",
-      link: "tel:+15551234567",
-      description: "Mon-Fri, 9AM-6PM EST"
-    },
-    {
-      icon: <MapPin className="h-6 w-6" />,
-      title: "Headquarters",
-      details: "123 Mystic Avenue, Suite 500",
-      description: "New York, NY 10001"
-    }
-  ];
-  const benefits = [
-    "24-hour response time guarantee",
-    "Complete confidentiality",
-    "Expert spiritual guidance",
-    "Personalized consultations",
-    "Secure communication",
-    "Satisfaction guarantee"
-  ];
-  const faqs = [
-    {
-      question: "How quickly will I receive a response?",
-      answer: "We guarantee a response within 24 hours for all inquiries. VIP members receive priority response within 6 hours."
-    },
-    {
-      question: "Is my information kept confidential?",
-      answer: "Absolutely. We adhere to strict privacy policies and all communications are encrypted and confidential."
-    },
-    {
-      question: "Do you offer refunds?",
-      answer: "Yes, we offer a satisfaction guarantee. If you're not satisfied with our service, contact us within 7 days for a full refund."
-    },
-    {
-      question: "Can I schedule a live consultation?",
-      answer: "Yes, our premium psychics offer live chat, audio, and video consultations. Contact us to schedule an appointment."
-    },
-    {
-      question: "What payment methods do you accept?",
-      answer: "We accept all major credit cards, PayPal, and cryptocurrency for your convenience."
-    },
-    {
-      question: "Are your psychics certified?",
-      answer: "All our psychics undergo a rigorous vetting process and are certified professionals with years of experience."
-    }
-  ];
-  // Static testimonials
-  const testimonials = [
-    {
-      name: "Sarah M.",
-      role: "Premium Member",
-      text: "The support team was incredibly helpful and responsive. My psychic reading was life-changing!",
-      date: "2 weeks ago"
-    },
-    {
-      name: "Michael R.",
-      role: "First-time Client",
-      text: "Quick response time and professional service. Will definitely use again.",
-      date: "1 month ago"
-    },
-    {
-      name: "Emma L.",
-      role: "VIP Member",
-      text: "The 24/7 VIP support is amazing. Always there when I need guidance.",
-      date: "3 days ago"
-    }
-  ];
-  // Static support hours
-  const supportHours = {
-    standard: [
-      { day: "Monday - Friday", hours: "9AM - 6PM EST" },
-      { day: "Saturday", hours: "10AM - 4PM EST" },
-      { day: "Sunday", hours: "Emergency Only" }
-    ],
-    vip: [
-      { day: "24/7 Support", hours: "Available Anytime" },
-      { day: "Live Chat", hours: "Instant Connection" },
-      { day: "Priority Email", hours: "Within 6 hours" }
-    ]
-  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#F5F3EB" }}>
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: "#C9A24D" }} />
+      </div>
+    );
+  }
+
+  if (!contactData) return null;
+
+  const colors = contactData.colors;
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: colors.softIvory }}>
       {/* Hero Section */}
@@ -175,32 +132,23 @@ const ContactPage = () => {
         <div className="max-w-7xl mx-auto px-4 py-16 sm:px-6 lg:px-8 relative">
           <div className="text-center">
             <h1 className="text-4xl md:text-5xl font-serif font-bold text-white mb-4 tracking-tight">
-              Connect With Our Spiritual Guides
+              {contactData.hero.title}
             </h1>
             <p className="text-xl text-white/80 max-w-3xl mx-auto">
-              Your journey deserves personalized attention. Reach out to our team of experienced psychics and spiritual advisors.
+              {contactData.hero.subtitle}
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-4">
-              <div className="flex items-center text-white/90 bg-white/10 px-4 py-2 rounded-full">
-                <Shield className="h-5 w-5 mr-2" />
-                <span className="text-sm">100% Confidential</span>
-              </div>
-              <div className="flex items-center text-white/90 bg-white/10 px-4 py-2 rounded-full">
-                <Clock className="h-5 w-5 mr-2" />
-                <span className="text-sm">24h Response Time</span>
-              </div>
-              <div className="flex items-center text-white/90 bg-white/10 px-4 py-2 rounded-full">
-                <Star className="h-5 w-5 mr-2" />
-                <span className="text-sm">Premium Support</span>
-              </div>
-              <div className="flex items-center text-white/90 bg-white/10 px-4 py-2 rounded-full">
-                <CheckCircle className="h-5 w-5 mr-2" />
-                <span className="text-sm">Satisfaction Guarantee</span>
-              </div>
+              {contactData.hero.badges.map((badge, index) => (
+                <div key={index} className="flex items-center text-white/90 bg-white/10 px-4 py-2 rounded-full">
+                  {getIcon(badge.icon, "h-5 w-5 mr-2")}
+                  <span className="text-sm">{badge.text}</span>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       </div>
+
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
         <div className="grid lg:grid-cols-3 gap-8">
@@ -211,11 +159,11 @@ const ContactPage = () => {
               <h2 className="text-2xl font-serif font-bold mb-6" style={{ color: colors.deepPurple }}>
                 <span className="flex items-center">
                   <Users className="h-6 w-6 mr-2" style={{ color: colors.antiqueGold }} />
-                  Contact Information
+                  {contactData.contactInfo.title}
                 </span>
               </h2>
               <div className="space-y-6">
-                {contactPoints.map((point, index) => (
+                {contactData.contactInfo.points.map((point, index) => (
                   <div
                     key={index}
                     className="flex items-start space-x-4 p-4 rounded-xl transition-all duration-300 hover:shadow-md"
@@ -226,7 +174,7 @@ const ContactPage = () => {
                   >
                     <div className="p-3 rounded-lg" style={{ backgroundColor: colors.antiqueGold + "20" }}>
                       <div style={{ color: colors.antiqueGold }}>
-                        {point.icon}
+                        {getIcon(point.icon)}
                       </div>
                     </div>
                     <div className="flex-1">
@@ -254,16 +202,17 @@ const ContactPage = () => {
                 ))}
               </div>
             </div>
+
             {/* Benefits Card */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border" style={{ borderColor: colors.lightGold, boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
               <h2 className="text-2xl font-serif font-bold mb-6" style={{ color: colors.deepPurple }}>
                 <span className="flex items-center">
                   <CheckCircle className="h-6 w-6 mr-2" style={{ color: colors.antiqueGold }} />
-                  Why Choose Us
+                  {contactData.benefits.title}
                 </span>
               </h2>
               <ul className="space-y-4">
-                {benefits.map((benefit, index) => (
+                {contactData.benefits.items.map((benefit, index) => (
                   <li key={index} className="flex items-start group">
                     <div className="flex-shrink-0 mt-1 mr-3">
                       <div className="w-2 h-2 rounded-full transform group-hover:scale-125 transition-transform"
@@ -277,16 +226,17 @@ const ContactPage = () => {
                 ))}
               </ul>
             </div>
+
             {/* Testimonials Card */}
             <div className="bg-white rounded-2xl shadow-xl p-6 border" style={{ borderColor: colors.lightGold, boxShadow: `0 10px 25px ${colors.deepPurple}10` }}>
               <h2 className="text-2xl font-serif font-bold mb-6" style={{ color: colors.deepPurple }}>
                 <span className="flex items-center">
                   <Star className="h-6 w-6 mr-2" style={{ color: colors.antiqueGold }} />
-                  Client Testimonials
+                  {contactData.testimonials.title}
                 </span>
               </h2>
               <div className="space-y-4">
-                {testimonials.map((testimonial, index) => (
+                {contactData.testimonials.items.map((testimonial, index) => (
                   <div
                     key={index}
                     className="p-4 rounded-xl"
@@ -313,6 +263,7 @@ const ContactPage = () => {
               </div>
             </div>
           </div>
+
           {/* Right Column - Contact Form & FAQ */}
           <div className="lg:col-span-2">
             {/* Contact Form Card */}
@@ -324,10 +275,10 @@ const ContactPage = () => {
               <div className="p-8">
                 <div className="mb-8">
                   <h2 className="text-3xl font-serif font-bold mb-3" style={{ color: colors.deepPurple }}>
-                    Send Us a Message
+                    {contactData.contactForm.title}
                   </h2>
                   <p className="text-lg" style={{ color: colors.deepPurple + "CC" }}>
-                    Fill out the form below and our team will get back to you as soon as possible.
+                    {contactData.contactForm.subtitle}
                   </p>
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-6">
@@ -418,6 +369,7 @@ const ContactPage = () => {
                       placeholder="Please provide details about your inquiry..."
                     ></textarea>
                   </div>
+
                   {/* Status Messages */}
                   {success && (
                     <div className="p-4 rounded-lg animate-fadeIn"
@@ -447,17 +399,18 @@ const ContactPage = () => {
                       </div>
                     </div>
                   )}
+
                   <div className="pt-4">
                     <button
                       type="submit"
-                      disabled={loading}
+                      disabled={submitting}
                       className="w-full group relative flex items-center justify-center py-4 px-6 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl"
                       style={{
                         backgroundColor: colors.antiqueGold,
                         color: colors.deepPurple
                       }}
                     >
-                      {loading ? (
+                      {submitting ? (
                         <span className="flex items-center">
                           <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin mr-2"></div>
                           Sending Message...
@@ -465,18 +418,19 @@ const ContactPage = () => {
                       ) : (
                         <span className="flex items-center">
                           <Send className="h-5 w-5 mr-2" />
-                          Send Message
+                          {contactData.contactForm.submitButtonText}
                           <ArrowRight className="ml-2 h-5 w-5 transform group-hover:translate-x-2 transition-transform" />
                         </span>
                       )}
                     </button>
                     <p className="text-center text-xs mt-3" style={{ color: colors.deepPurple + "80" }}>
-                      * Required fields. By submitting, you agree to our privacy policy and terms of service.
+                      {contactData.contactForm.footerText}
                     </p>
                   </div>
                 </form>
               </div>
             </div>
+
             {/* FAQ Section */}
             <div className="bg-white rounded-2xl shadow-xl p-8 border mb-8"
               style={{
@@ -486,11 +440,11 @@ const ContactPage = () => {
               <h2 className="text-2xl font-serif font-bold mb-6" style={{ color: colors.deepPurple }}>
                 <span className="flex items-center">
                   <MessageSquare className="h-6 w-6 mr-2" style={{ color: colors.antiqueGold }} />
-                  Frequently Asked Questions
+                  {contactData.faq.title}
                 </span>
               </h2>
               <div className="space-y-6">
-                {faqs.map((faq, index) => (
+                {contactData.faq.items.map((faq, index) => (
                   <div
                     key={index}
                     className="border-b pb-6 last:border-0 transition-all duration-300 hover:bg-gray-50 -mx-4 px-4 rounded-lg cursor-pointer"
@@ -513,6 +467,7 @@ const ContactPage = () => {
                 ))}
               </div>
             </div>
+
             {/* Support Hours */}
             <div className="bg-gradient-to-r rounded-2xl shadow-xl p-8 overflow-hidden relative mb-8"
               style={{
@@ -525,14 +480,14 @@ const ContactPage = () => {
               <div className="relative z-10">
                 <div className="flex items-center mb-6">
                   <Clock className="h-8 w-8 mr-3" style={{ color: colors.antiqueGold }} />
-                  <h3 className="text-2xl font-bold text-white">Support Hours</h3>
+                  <h3 className="text-2xl font-bold text-white">{contactData.supportHours.title}</h3>
                 </div>
                 <div className="grid md:grid-cols-2 gap-8">
                   {/* Standard Support */}
                   <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm">
-                    <p className="font-semibold text-lg text-white mb-3">Standard Support</p>
+                    <p className="font-semibold text-lg text-white mb-3">{contactData.supportHours.standard.title}</p>
                     <div className="space-y-2">
-                      {supportHours.standard.map((schedule, index) => (
+                      {contactData.supportHours.standard.hours.map((schedule, index) => (
                         <div key={index} className="flex justify-between items-center">
                           <span className="text-sm text-white/80">{schedule.day}</span>
                           <span className="text-sm font-medium text-white">{schedule.hours}</span>
@@ -540,16 +495,16 @@ const ContactPage = () => {
                       ))}
                     </div>
                   </div>
-                 
+
                   {/* VIP Support */}
                   <div className="bg-white/10 p-4 rounded-xl backdrop-blur-sm"
                     style={{ border: `1px solid ${colors.antiqueGold}30` }}>
                     <div className="flex items-center mb-3">
                       <Star className="h-4 w-4 mr-2" style={{ color: colors.antiqueGold }} />
-                      <p className="font-semibold text-lg text-white">VIP Priority Support</p>
+                      <p className="font-semibold text-lg text-white">{contactData.supportHours.vip.title}</p>
                     </div>
                     <div className="space-y-2">
-                      {supportHours.vip.map((schedule, index) => (
+                      {contactData.supportHours.vip.hours.map((schedule, index) => (
                         <div key={index} className="flex justify-between items-center">
                           <span className="text-sm text-white/80">{schedule.day}</span>
                           <span className="text-sm font-medium" style={{ color: colors.antiqueGold }}>
@@ -565,6 +520,7 @@ const ContactPage = () => {
           </div>
         </div>
       </div>
+
       {/* CTA Banner */}
       <div className="mt-12 relative overflow-hidden"
         style={{
@@ -579,10 +535,10 @@ const ContactPage = () => {
               <MessageSquare className="h-8 w-8" style={{ color: colors.antiqueGold }} />
             </div>
             <h3 className="text-2xl md:text-3xl font-serif font-bold mb-3" style={{ color: colors.deepPurple }}>
-              Need Immediate Spiritual Guidance?
+              {contactData.ctaSection.title}
             </h3>
             <p className="text-lg mb-6 max-w-2xl mx-auto" style={{ color: colors.deepPurple + "CC" }}>
-              Our premium psychics are available for live consultations 24/7
+              {contactData.ctaSection.description}
             </p>
             <button
               className="inline-flex items-center px-8 py-4 rounded-xl font-semibold text-lg transition-all duration-300 transform hover:scale-105 shadow-xl hover:shadow-2xl group"
@@ -590,18 +546,19 @@ const ContactPage = () => {
                 backgroundColor: colors.deepPurple,
                 color: colors.softIvory
               }}
-              onClick={() => alert("Live chat feature would connect here in a real application")}
+              onClick={() => window.location.href = contactData.ctaSection.buttonAction}
             >
               <MessageSquare className="h-5 w-5 mr-3 group-hover:animate-pulse" />
-              Start Live Chat Now
+              {contactData.ctaSection.buttonText}
               <ArrowRight className="ml-3 h-5 w-5 transform group-hover:translate-x-2 transition-transform" />
             </button>
             <p className="text-sm mt-4" style={{ color: colors.deepPurple + "80" }}>
-              Available 24/7 for premium members • Instant connection • No appointment needed
+              {contactData.ctaSection.footerText}
             </p>
           </div>
         </div>
       </div>
+
       {/* Custom CSS for animations */}
       <style jsx>{`
         @keyframes fadeIn {
@@ -615,4 +572,5 @@ const ContactPage = () => {
     </div>
   );
 };
+
 export default ContactPage;

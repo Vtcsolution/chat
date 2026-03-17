@@ -85,16 +85,6 @@ if (process.env.TWILIO_AUTH_TOKEN) {
   console.log(`Length: ${process.env.TWILIO_AUTH_TOKEN.length}`);
 }
 
-console.log('\n💡 Recommendations:');
-console.log('1. Remove ALL whitespace after values');
-console.log('2. Ensure no invisible characters');
-console.log('3. Use LF line endings (not CRLF)');
-console.log('4. Restart terminal after fixing .env');
+
 
 // Create a cleaned version
-console.log('\n✨ Here is a cleaned version of your Twilio lines:');
-console.log('TWILIO_ACCOUNT_SID=ACe88856152bdb204fa6c35aa313c7d9a6');
-console.log('TWILIO_AUTH_TOKEN=5b28b83acd9bcba7ed9db0421c2a9e8f');
-console.log('TWILIO_PHONE_NUMBER=+19789177347');
-console.log('TWILIO_API_KEY=SKa494413d9fcd805450ef1b07aad1142a');
-console.log('TWILIO_API_SECRET=n5igmNIbBGaf4c1V4b2JOd42E2d7knIS');

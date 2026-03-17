@@ -148,6 +148,12 @@ const feedback = require('./routes/feedbackRoutes');
 const userSessionRoutes = require('./routes/CallSession/userSessionRoutes');
 const psychicPaymentRoutes = require("./routes/CallSession/psychicPaymentRoutes");
 const PsychicPaidRoutes = require("./routes/CallSession/PsychicPaidRoutes")
+const blogRoutes = require("./routes/blogRoutes");
+const commentRoutes = require("./routes/commentRoutes");
+const homeRoutes = require ('./routes/Pages/homeRoutes')
+const aboutRoutes = require ('./routes/Pages/aboutRoutes')
+const contactRoutes = require ('./routes/Pages/contactRoutes')
+const termsRoutes = require ('./routes/Pages/termsRoutes')
 // API Routes (always included)
 app.use('/api/human-psychics', psychicRoutes);
 app.use("/api/humanchat", chatRoute);
@@ -165,11 +171,16 @@ app.use('/api', timerRoutes);
 app.use('/api/ratings', ratingRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api', feedback);
+app.use("/api/blogs", blogRoutes);
+app.use("/api/comments", commentRoutes);
 app.use('/api/admin/payments', psychicPaymentRoutes);
 app.use('/api/psychic/payments', PsychicPaidRoutes);
 app.use('/api/usersession', userSessionRoutes);
-
+app.use('/api/home', homeRoutes)
 app.use('/api/admindata', admindataRoutes);
+app.use('/api/about',aboutRoutes)
+app.use('/api/contact', contactRoutes)
+app.use('/api/terms', termsRoutes);
 
 // Call routes (only if Twilio is ready)
 if (isTwilioReady) {
